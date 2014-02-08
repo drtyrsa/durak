@@ -8,37 +8,37 @@ from durak.utils.cards import DurakCard, CardSet
 
 class DurakCardTest(unittest.TestCase):
 
-    def test_init_accepts_positional_arguments(self):
+    def test_new_accepts_positional_arguments(self):
         card = DurakCard('6', 'H')
-        self.assertEqual(card._value, 0)  # first elem of DurakCard.VALUES
-        self.assertEqual(card._suit, 'H')
+        self.assertEqual(card.numeric_value, 0)  # first elem of DurakCard.VALUES
+        self.assertEqual(card.suit, 'H')
 
-    def test_init_accepts_keyword_arguments(self):
+    def test_new_accepts_keyword_arguments(self):
         card = DurakCard(value='6', suit='H')
-        self.assertEqual(card._value, 0)  # first elem of DurakCard.VALUES
-        self.assertEqual(card._suit, 'H')
+        self.assertEqual(card.numeric_value, 0)  # first elem of DurakCard.VALUES
+        self.assertEqual(card.suit, 'H')
 
-    def test_init_accepts_strings(self):
+    def test_new_accepts_strings(self):
         card = DurakCard('6H')
-        self.assertEqual(card._value, 0)  # first elem of DurakCard.VALUES
-        self.assertEqual(card._suit, 'H')
+        self.assertEqual(card.numeric_value, 0)  # first elem of DurakCard.VALUES
+        self.assertEqual(card.suit, 'H')
 
-    def test_init_raises_exception_on_not_2_chars_length_string(self):
+    def test_new_raises_exception_on_not_2_chars_length_string(self):
         with self.assertRaises(ValueError):
             DurakCard('6')
 
-    def test_init_raises_exception_on_invalid_set_of_arguments(self):
+    def test_new_raises_exception_on_invalid_set_of_arguments(self):
         with self.assertRaises(ValueError):
             DurakCard('6', 'H', some='thing')
 
         with self.assertRaises(ValueError):
             DurakCard(value='6')
 
-    def test_init_raises_exception_on_invalid_suit(self):
+    def test_new_raises_exception_on_invalid_suit(self):
         with self.assertRaises(ValueError):
             DurakCard('6', 'L')
 
-    def test_init_raises_exception_on_invalid_value(self):
+    def test_new_raises_exception_on_invalid_value(self):
         with self.assertRaises(ValueError):
             DurakCard('0', 'H')
 
@@ -46,14 +46,13 @@ class DurakCardTest(unittest.TestCase):
         for index, value in enumerate(DurakCard.VALUES):
             card = DurakCard(value, 'H')
             self.assertEqual(card.numeric_value, index)
-            self.assertEqual(card._value, index)
 
-    def test_value_is_value_from_init(self):
+    def test_value_is_value_from_new(self):
         for value in DurakCard.VALUES:
             card = DurakCard(value, 'H')
             self.assertEqual(card.value, value)
 
-    def test_suit_is_suit_from_init(self):
+    def test_suit_is_suit_from_new(self):
         for suit in DurakCard.SUITS:
             card = DurakCard('6', suit)
             self.assertEqual(card.suit, suit)
@@ -110,6 +109,32 @@ class DurakCardTest(unittest.TestCase):
     def test_cards_of_different_suits_are_never_equal(self):
         self.assertNotEqual(DurakCard('6', 'S'), DurakCard('6', 'H'))
         self.assertNotEqual(DurakCard('6', 'C'), DurakCard('6', 'D'))
+
+    def test_durak_card_instances_are_cached(self):
+        DurakCard._INSTANCE_REGISTRY.pop((0, 'H'), None)
+        self.assertFalse((0, 'H') in DurakCard._INSTANCE_REGISTRY)
+
+        card = DurakCard('6', 'H')
+        self.assertTrue((0, 'H') in DurakCard._INSTANCE_REGISTRY)
+        self.assertEqual(card.value, '6')
+        self.assertEqual(card.suit, 'H')
+
+        # making sure it's really being retrieved from cache
+        DurakCard._INSTANCE_REGISTRY[(0, 'H')] = 'banana'
+        card = DurakCard('6', 'H')
+        self.assertEqual(card, 'banana')
+
+        # let's remove invalid value from global cache
+        DurakCard._INSTANCE_REGISTRY.pop((0, 'H'), None)
+
+    def test_durak_card_instances_are_immutable(self):
+        card = DurakCard('7', 'S')
+
+        with self.assertRaises(AttributeError):
+            card.value = '8'
+
+        with self.assertRaises(AttributeError):
+            card.suit = 'D'
 
 
 class CardSetTest(unittest.TestCase):

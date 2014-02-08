@@ -1,13 +1,29 @@
 # -*- coding: utf-8 -*-
+from collections import namedtuple
 from itertools import product, groupby
 
 
-class DurakCard(object):
+DurakCardTuple = namedtuple('DurakCardTuple', ['numeric_value', 'suit'])
+
+
+class DurakCard(DurakCardTuple):
 
     VALUES = ('6', '7', '8', '9', 'T', 'J', 'Q', 'K', 'A')
     SUITS = ('H', 'S', 'D', 'C')
 
-    def __init__(self, *args, **kwargs):
+    _INSTANCE_REGISTRY = {}
+
+    def __new__(cls, *args, **kwargs):
+        value, suit = cls._parse_suit_and_value(*args, **kwargs)
+        if (value, suit) in cls._INSTANCE_REGISTRY:
+            return cls._INSTANCE_REGISTRY[(value, suit)]
+
+        instance = super(DurakCard, cls).__new__(cls, value, suit)
+        cls._INSTANCE_REGISTRY[(value, suit)] = instance
+        return instance
+
+    @classmethod
+    def _parse_suit_and_value(cls, *args, **kwargs):
         # input value can be string like '7H'
         if len(args) == 1 and not kwargs:
             string = str(args[0]).strip()
@@ -29,30 +45,23 @@ class DurakCard(object):
         else:
             raise ValueError('Invalid arguments')
 
-        if suit.upper() not in self.SUITS:
+        if suit.upper() not in cls.SUITS:
             raise ValueError('Invalid suit')
-        self._suit = suit
 
         try:
-            self._value = self.VALUES.index(value.upper())
+            value = cls.VALUES.index(value.upper())
         except ValueError:
             raise ValueError('Invalid value')
+
+        return value, suit
 
     @classmethod
     def all(cls):
         return {cls(*args) for args in product(cls.VALUES, cls.SUITS)}
 
     @property
-    def numeric_value(self):
-        return self._value
-
-    @property
     def value(self):
-        return self.VALUES[self._value]
-
-    @property
-    def suit(self):
-        return self._suit
+        return self.VALUES[self.numeric_value]
 
     def __str__(self):
         return '%s%s' % (self.value, self.suit)
