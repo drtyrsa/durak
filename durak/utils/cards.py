@@ -9,7 +9,7 @@ DurakCardTuple = namedtuple('DurakCardTuple', ['numeric_value', 'suit'])
 class DurakCard(DurakCardTuple):
 
     VALUES = ('6', '7', '8', '9', 'T', 'J', 'Q', 'K', 'A')
-    SUITS = ('H', 'S', 'D', 'C')
+    SUITS = ('C', 'D', 'H', 'S')
 
     _INSTANCE_REGISTRY = {}
 
@@ -62,6 +62,10 @@ class DurakCard(DurakCardTuple):
     @property
     def value(self):
         return self.VALUES[self.numeric_value]
+
+    @property
+    def numeric_suit(self):
+        return self.SUITS.index(self.suit)
 
     def __str__(self):
         return '%s%s' % (self.value, self.suit)
