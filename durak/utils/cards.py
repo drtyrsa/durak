@@ -67,6 +67,26 @@ class DurakCard(DurakCardTuple):
     def numeric_suit(self):
         return self.SUITS.index(self.suit)
 
+    def is_less_than(self, other, trump=None):
+        if not isinstance(other, type(self)):
+            raise ValueError(
+                u'Can not compare DurakCard and %s instances' % type(other)
+            )
+
+        if trump is not None:
+            if not isinstance(trump, type(self)):
+                raise ValueError(
+                    u'Trump should be DurakCard instance, not %s' % type(trump)
+                )
+
+            if (self.suit == trump.suit and other.suit != trump.suit):
+                return False
+
+            if (self.suit != trump.suit and other.suit == trump.suit):
+                return True
+
+        return (self < other)
+
     def __str__(self):
         return '%s%s' % (self.value, self.suit)
 
