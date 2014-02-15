@@ -244,3 +244,47 @@ class DeckPanel(wx.Panel):
 
         if count == 0:
             self._card_count.SetLabel(u'Козырь - %s' % str(self._trump_card))
+
+
+class ControlSizer(wx.BoxSizer):
+    TAKE = 'take'
+    DISCARD = 'discard'
+    ENOUGH = 'enough'
+
+    def __init__(self, *args, **kwargs):
+        self.parent = kwargs.pop('parent')
+        super(ControlSizer, self).__init__(*args, **kwargs)
+        self._take_button = wx.Button(parent=self.parent, label=u'Беру')
+        self._discard_button = wx.Button(parent=self.parent, label=u'Бито')
+        self._enough_button = wx.Button(parent=self.parent, label=u'Хватит')
+        self.AddMany(
+            [self._take_button, self._discard_button, self._enough_button]
+        )
+        self.hide_all()
+
+    def set_on_take_button_click(self, handler):
+        self._take_button.Bind(wx.EVT_BUTTON, handler)
+
+    def set_on_discard_button_click(self, handler):
+        self._discard_button.Bind(wx.EVT_BUTTON, handler)
+
+    def set_on_enough_button_click(self, handler):
+        self._enough_button.Bind(wx.EVT_BUTTON, handler)
+
+    def hide_all(self):
+        self._take_button.Hide()
+        self._discard_button.Hide()
+        self._enough_button.Hide()
+
+    def show_button(self, button_name):
+        assert button_name in (self.TAKE, self.DISCARD, self.ENOUGH)
+
+        self.hide_all()
+        if button_name == self.DISCARD:
+            self._discard_button.Show()
+        elif button_name == self.ENOUGH:
+            self._enough_button.Show()
+        elif button_name == self.TAKE:
+            self._take_button.Show()
+
+        self.Layout()

@@ -1,7 +1,8 @@
 # -*- coding: utf-8 -*-
 import wx
 
-from durak.gui.widgets import CardSizer, EnemyCardSizer, TablePanel, DeckPanel
+from durak.gui.widgets import (CardSizer, EnemyCardSizer, TablePanel,
+                               DeckPanel, ControlSizer)
 
 
 class PlayFrame(wx.Frame):
@@ -36,7 +37,9 @@ class PlayFrame(wx.Frame):
         self._deck = DeckPanel(self._panel, size=(100, 130))
         self._table_sizer.Add(self._deck)
 
-        self._main_sizer = wx.FlexGridSizer(cols=1, rows=3)
+        self._control_sizer = ControlSizer(wx.HORIZONTAL, parent=self._panel)
+
+        self._main_sizer = wx.FlexGridSizer(cols=1, rows=4)
         self._main_sizer.AddGrowableCol(0)
         self._main_sizer.AddGrowableRow(1)
         self._main_sizer.Add(
@@ -45,6 +48,7 @@ class PlayFrame(wx.Frame):
         self._main_sizer.Add(
             self._table_sizer, flag=wx.ALIGN_CENTER_VERTICAL, proportion=1
         )
+        self._main_sizer.Add(self._control_sizer, flag=wx.EXPAND, proportion=1)
         self._main_sizer.Add(
             self._bottom_player_sizer, flag=wx.EXPAND, proportion=1
         )
