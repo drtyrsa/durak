@@ -1,4 +1,6 @@
 # -*- coding: utf-8 -*-
+from collections import OrderedDict
+
 import wx
 
 from durak.gui.images import card_image_manager
@@ -22,6 +24,16 @@ class CardButton(wx.BitmapButton):
     def card(self, some_card):
         self._card = some_card
         self.SetBitmapLabel(card_image_manager.get_image(some_card))
+
+
+class Card(wx.StaticBitmap):
+    def __init__(self, *args, **kwargs):
+        card = kwargs.pop('card')
+        kwargs.update(dict(
+            bitmap=card_image_manager.get_image(card),
+            style=wx.NO_BORDER
+        ))
+        super(Card, self).__init__(*args, **kwargs)
 
 
 class HiddenCard(wx.StaticBitmap):
@@ -135,3 +147,100 @@ class EnemyCardSizer(wx.BoxSizer):
         assert self._cards
 
         self.set_count(len(self._cards) - 1)
+
+
+class TablePanel(wx.Panel):
+    CARD_PAIR_WIDTH = 55
+    UPPER_CARD_Y_OFFSET = 10
+    UPPER_CARD_X_OFFSET = 20
+    GIVEN_MORE_OFFSET = 95
+    PADDING_LEFT = 10
+
+    def __init__(self, *args, **kwargs):
+        super(TablePanel, self).__init__(*args, **kwargs)
+        self._cards = OrderedDict()
+        self._give_more_mode = False
+
+        self.SetSizeHints(640, 150)
+
+    def _add_card(self, card, position):
+        card_img = Card(parent=self, card=card, pos=position)
+        self._cards[card] = card_img
+        card_img.Show()
+
+    def move(self, card):
+        assert not self._give_more_mode
+        assert not self._is_odd
+
+        position = (
+            self.CARD_PAIR_WIDTH * (len(self._cards)) + self.PADDING_LEFT,
+            self.UPPER_CARD_Y_OFFSET
+        )
+        self._add_card(card, position)
+
+    def respond(self, card):
+        assert not self._give_more_mode
+        assert self._is_odd
+
+        last_card_img = self._cards.values()[-1]
+        position = (
+            last_card_img.GetPosition() +
+            wx.Point(self.UPPER_CARD_X_OFFSET, -self.UPPER_CARD_Y_OFFSET)
+        )
+        self._add_card(card, position)
+
+    def give_more(self, card):
+        assert self._give_more_mode or self._is_odd
+
+        last_card_img = self._cards.values()[-1]
+        x = last_card_img.GetPosition()[0] + self.GIVEN_MORE_OFFSET
+        position = (x, self.UPPER_CARD_Y_OFFSET)
+
+        self._add_card(card, position)
+        self._give_more_mode = True
+
+    def remove_all(self):
+        for card in self._cards.itervalues():
+            card.Destroy()
+
+        self._cards = OrderedDict()
+        self._give_more_mode = False
+
+    @property
+    def cards(self):
+        return self._cards.keys()
+
+    @property
+    def _is_odd(self):
+        return len(self._cards) % 2
+
+
+class DeckPanel(wx.Panel):
+    def __init__(self, *args, **kwargs):
+        super(DeckPanel, self).__init__(*args, **kwargs)
+        self._opened_trump = wx.StaticBitmap(parent=self, pos=(0, 12))
+        self._deck_top = HiddenCard(parent=self, pos=(50, 0))
+        self._card_count = wx.StaticText(parent=self, pos=(70, 100))
+
+        self._opened_trump.Hide()
+        self._deck_top.Hide()
+
+        self._trump_card = None
+
+    def set_opened_trump(self, card):
+        img = card_image_manager.get_image(card).ConvertToImage()
+        img = img.Rotate90(clockwise=False)
+        self._opened_trump.SetBitmap(img.ConvertToBitmap())
+
+        self._trump_card = card
+
+    def set_card_count(self, count):
+        assert count >= 0
+
+        self._card_count.SetLabel(str(count))
+
+        self._deck_top.Show(count > 1)
+        self._opened_trump.Show(count > 0)
+
+        if count == 0:
+            self._card_count.SetLabel(u'Козырь - %s' % str(self._trump_card))
