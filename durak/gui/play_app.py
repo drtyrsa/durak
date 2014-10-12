@@ -7,8 +7,8 @@ from durak.gui.frames import PlayFrame
 
 def main():
     app = wx.PySimpleApp()
-    frm = PlayFrame()
-    frm.Show()
+    frame = PlayFrame()
+    frame.Show()
     app.MainLoop()
 
 if __name__ == '__main__':
