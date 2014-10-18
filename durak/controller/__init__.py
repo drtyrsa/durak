@@ -70,8 +70,8 @@ class GameController(object):
         self._no_response = False
 
         return {
-            'player1_cards': set(self._player1.cards),
-            'player2_cards': set(self._player2.cards),
+            'player1_cards': CardSet(self._player1.cards, trump=self._trump),
+            'player2_cards': CardSet(self._player2.cards, trump=self._trump),
             'trump': DurakCard(self._trump),
         }
 
@@ -94,7 +94,7 @@ class GameController(object):
     def _get_game_data_for(self, player):
         return {
             'trump': str(DurakCard(self._trump)),
-            'deck_count': len(self._deck),
+            'deck_count': self.deck_count,
             'enemy_count': len(self._get_enemy_of(player).cards),
             'on_table': map(str, self._on_table),
             'discarded': map(str, self._discarded),
@@ -265,8 +265,8 @@ class GameController(object):
         self._check_for_game_over()
 
         return {
-            'player1_cards': set(self._player1.cards),
-            'player2_cards': set(self._player2.cards),
+            'player1_cards': CardSet(self._player1.cards, trump=self._trump),
+            'player2_cards': CardSet(self._player2.cards, trump=self._trump),
         }
 
     def is_game_over(self):
@@ -311,3 +311,14 @@ class GameController(object):
         elif self._winner == self._player2:
             return self.PLAYER2
         return None
+
+    @property
+    def to_move(self):
+        if self._to_move == self._player1:
+            return self.PLAYER1
+
+        return self.PLAYER2
+
+    @property
+    def deck_count(self):
+        return len(self._deck)

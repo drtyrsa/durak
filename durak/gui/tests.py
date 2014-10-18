@@ -8,7 +8,8 @@ import wx
 from durak.utils.cards import DurakCard
 from durak.gui.images import CardImageManager
 from durak.gui.widgets import (CardButton, Card, HiddenCard, CardSizer,
-                               EnemyCardSizer, TablePanel, DeckPanel)
+                               EnemyCardSizer, TablePanel, DeckPanel,
+                               ControlSizer)
 
 
 class CardImageManagerTest(unittest.TestCase):
@@ -310,6 +311,15 @@ class CardSizerTest(unittest.TestCase):
         for button in self.sizer._buttons_dict.itervalues():
             self.assertTrue(button.Enable.called)
 
+    def test_disable_all(self):
+        self.sizer._buttons_dict = {
+            DurakCard('6H'): Mock(), DurakCard('7H'): Mock()
+        }
+
+        self.sizer.disable_all()
+        for button in self.sizer._buttons_dict.itervalues():
+            self.assertTrue(button.Disable.called)
+
     def test_set_enabled_cards_enables_certain_cards(self):
         self.sizer._buttons_dict = {
             DurakCard('6H'): Mock(), DurakCard('7H'): Mock()
@@ -322,6 +332,13 @@ class CardSizerTest(unittest.TestCase):
         self.assertTrue(
             self.sizer._buttons_dict[DurakCard('7H')].Enable.called
         )
+
+    def test_cards_property(self):
+        self.sizer._buttons_dict = {
+            DurakCard('6H'): Mock(), DurakCard('7H'): Mock()
+        }
+        self.sizer._trump = DurakCard('6H')
+        self.assertEqual(self.sizer.cards, set(self.sizer._buttons_dict))
 
 class EnemyCardSizerTest(unittest.TestCase):
     def setUp(self):
@@ -408,7 +425,7 @@ class TablePanelTest(unittest.TestCase):
         self.panel._cards[DurakCard('6H')] = card_mock
         card = DurakCard('7H')
 
-        self.assertFalse(self.panel._give_more_mode)
+        self.assertEqual(self.panel._given_more, [])
 
         with patch.object(self.panel, '_add_card') as add_card_mock:
             self.panel.give_more(card)
@@ -419,7 +436,7 @@ class TablePanelTest(unittest.TestCase):
                     self.panel.UPPER_CARD_Y_OFFSET
                 )
             )
-            self.assertTrue(self.panel._give_more_mode)
+            self.assertEqual(self.panel._given_more, [DurakCard('7H')])
 
     def test_remove_all_destroys_all_the_cards(self):
         cards = [DurakCard('6H'), DurakCard('7H'), DurakCard('8H')]
@@ -431,7 +448,7 @@ class TablePanelTest(unittest.TestCase):
         self.panel.remove_all()
         self.assertTrue(all(card.Destroy.called for card in card_values))
         self.assertEqual(self.panel._cards, {})
-        self.assertFalse(self.panel._give_more_mode)
+        self.assertEqual(self.panel._given_more, [])
 
     def test_cards_property(self):
         cards = [DurakCard('6H'), DurakCard('7H'), DurakCard('8H')]
@@ -441,9 +458,165 @@ class TablePanelTest(unittest.TestCase):
 
         self.assertEqual(self.panel.cards, cards)
 
+    def test_given_more_property(self):
+        cards = [DurakCard('6H'), DurakCard('7H')]
+        self.panel._given_more = cards
+
+        self.assertEqual(self.panel.given_more, cards)
+
     def test_is_odd_property(self):
         self.panel._cards[DurakCard('6H')] = Mock()
         self.assertTrue(self.panel._is_odd)
 
         self.panel._cards[DurakCard('7H')] = Mock()
         self.assertFalse(self.panel._is_odd)
+
+
+class DeckPanelTest(unittest.TestCase):
+    def setUp(self):
+        self._app = wx.PySimpleApp()
+
+        with patch('__builtin__.super'):
+            with patch.object(DeckPanel, '_create_widgets'):
+                self.panel = DeckPanel(parent=None)
+
+    def test_create_widgets(self):
+        with patch('durak.gui.widgets.wx') as wx_patch_mock:
+            with patch('durak.gui.widgets.HiddenCard') as HiddenCardMock:
+                self.panel._create_widgets()
+
+                wx_patch_mock.StaticBitmap.assert_called_once_with(
+                    parent=self.panel, pos=(0, 12)
+                )
+                HiddenCardMock.assert_called_once_with(
+                    parent=self.panel, pos=(50, 0)
+                )
+                wx_patch_mock.StaticText.assert_called_once_with(
+                    parent=self.panel, pos=(70, 100)
+                )
+
+                self.assertTrue(self.panel._opened_trump.Hide.called)
+                self.assertTrue(self.panel._deck_top.Hide.called)
+
+
+    def test_set_opened_trump_sets_trump_and_rotates_card(self):
+        card = DurakCard('6H')
+        self.panel._opened_trump = Mock()
+
+        with patch('durak.gui.widgets.card_image_manager') as img_mng_mock:
+            self.panel.set_opened_trump(DurakCard('6H'))
+            img_mng_mock.get_image.assert_called_once_with(card)
+            img = (
+                img_mng_mock.get_image.return_value.ConvertToImage.return_value
+            )
+            img.Rotate90.assert_called_once_with(clockwise=False)
+            self.panel._opened_trump.SetBitmap.assert_called_once_with(
+                img.Rotate90.return_value.ConvertToBitmap.return_value
+            )
+
+        self.assertEqual(self.panel._trump_card, card)
+
+    def test_set_card_count_sets_count(self):
+        self.panel._opened_trump = Mock()
+        self.panel._deck_top = Mock()
+        self.panel._card_count = Mock()
+
+        self.panel.set_card_count(10)
+
+        self.panel._deck_top.Show.assert_called_once_with(True)
+        self.panel._opened_trump.Show.assert_called_once_with(True)
+        self.panel._card_count.SetLabel.assert_called_once_with('10')
+
+    def test_set_card_count_hides_deck_if_lt_1(self):
+        self.panel._opened_trump = Mock()
+        self.panel._deck_top = Mock()
+        self.panel._card_count = Mock()
+
+        self.panel.set_card_count(1)
+
+        self.panel._deck_top.Show.assert_called_once_with(False)
+        self.panel._opened_trump.Show.assert_called_once_with(True)
+        self.panel._card_count.SetLabel.assert_called_once_with('1')
+
+    def test_set_card_count_hides_trump_if_0(self):
+        self.panel._opened_trump = Mock()
+        self.panel._deck_top = Mock()
+        self.panel._card_count = Mock()
+        self.panel._trump_card = DurakCard('6H')
+
+        self.panel.set_card_count(0)
+
+        self.panel._deck_top.Show.assert_called_once_with(False)
+        self.panel._opened_trump.Show.assert_called_once_with(False)
+        self.panel._card_count.SetLabel.assert_called_once_with(u'Козырь - 6H')
+
+
+class ControlSizerTest(unittest.TestCase):
+    def setUp(self):
+        self._app = wx.PySimpleApp()
+        self.parent = Mock()
+
+        with patch('__builtin__.super'):
+            with patch('durak.gui.widgets.wx') as self.wx_patch_mock:
+                with patch.object(ControlSizer, 'AddMany') as self.AddManyMock:
+                    self.sizer = ControlSizer(parent=self.parent)
+
+    def test_init(self):
+        buttons = [
+            self.sizer._take_button,
+            self.sizer._discard_button,
+            self.sizer._enough_button
+        ]
+
+        for button in buttons:
+            self.assertEqual(
+                button, self.wx_patch_mock.Button.return_value
+            )
+            self.assertTrue(button.Hide.called)
+
+        self.AddManyMock.assert_called_once_with(buttons)
+
+    def test_set_on_take_button_click(self):
+        handler = lambda e: None
+        self.sizer.set_on_take_button_click(handler)
+        self.sizer._take_button.Bind.assert_called_once_with(
+            wx.EVT_BUTTON, handler
+        )
+
+    def test_set_on_discard_button_click(self):
+        handler = lambda e: None
+        self.sizer.set_on_discard_button_click(handler)
+        self.sizer._discard_button.Bind.assert_called_once_with(
+            wx.EVT_BUTTON, handler
+        )
+
+    def test_set_on_enough_button_click(self):
+        handler = lambda e: None
+        self.sizer.set_on_enough_button_click(handler)
+        self.sizer._enough_button.Bind.assert_called_once_with(
+            wx.EVT_BUTTON, handler
+        )
+
+    def test_hide_all(self):
+        # все кнопки ссылаются на один мок, проверим счетчик на нем
+        self.sizer._enough_button.Hide.reset_mock()
+        self.assertEqual(self.sizer._enough_button.Hide.call_count, 0)
+
+        self.sizer.hide_all()
+
+        self.assertEqual(self.sizer._enough_button.Hide.call_count, 3)
+
+    def test_show_button(self):
+        buttons_map = {
+            self.sizer.TAKE: self.sizer._take_button,
+            self.sizer.DISCARD: self.sizer._discard_button,
+            self.sizer.ENOUGH: self.sizer._enough_button,
+        }
+
+        for button_name, button in buttons_map.iteritems():
+            with patch.object(ControlSizer, 'Layout') as LayoutMock:
+                self.sizer.show_button(button_name)
+                self.assertTrue(button.Show.called)
+
+            self.assertTrue(LayoutMock.called)
+            self.assertTrue(self.parent.Layout.called)

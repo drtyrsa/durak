@@ -83,9 +83,10 @@ class EngineWrapper(object):
         return cards
 
     def game_end(self):
-        self._write('game_end')
-        self._process.kill()
-        self._process = None
+        if self._process is not None:
+            self._write('game_end')
+            self._process.kill()
+            self._process = None
 
     def _write(self, line):
         logger.debug('sending: (' + str(id(self)) + '): %s' % line)

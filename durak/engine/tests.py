@@ -146,6 +146,17 @@ class EngineWrapperTest(unittest.TestCase):
         self.process.stdin.write.assert_called_once_with('game_end\n')
         self.assertTrue(self.wrapper._process is None)
 
+    def test_game_end_is_idempotent(self):
+        self.assertFalse(self.wrapper._process is None)
+
+        self.wrapper.game_end()
+
+        self.assertTrue(self.process.kill.called)
+        self.assertTrue(self.wrapper._process is None)
+
+        self.wrapper.game_end()
+        self.assertTrue(self.wrapper._process is None)
+
     def test_init_writes_command_and_reads_output(self):
         self.wrapper.init(DurakCard('7H'))
 
