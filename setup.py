@@ -28,6 +28,7 @@ setup(
         'console_scripts': [
             'durak-autoplay=durak.autoplay:main',
             'durak-dummy=durak.engine.dummy:main',
+            'durak-gui=durak.gui.play_app:main',
         ],
     },
     install_requires=[
