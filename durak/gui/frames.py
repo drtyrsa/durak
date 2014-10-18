@@ -5,6 +5,7 @@ from durak.controller import GameController
 from durak.engine.wrapper import EngineWrapper
 from durak.gui.widgets import (CardSizer, EnemyCardSizer, TablePanel,
                                DeckPanel, ControlSizer)
+from durak.utils import get_filename
 
 
 class PlayFrame(wx.Frame):
@@ -23,7 +24,12 @@ class PlayFrame(wx.Frame):
 
         self._create_layout()
 
-        self._controller = GameController()
+        self._controller = GameController(
+            player1_name='HUMAN',
+            player2_name='ENGINE',
+            log_filename=get_filename('last_game'),
+            overwrite_log=True
+        )
         self._engine = None
         self._trump = None
 
@@ -273,7 +279,8 @@ class PlayFrame(wx.Frame):
             self._top_player_sizer.decrement()
 
         if self._controller.state == self._controller.States.DEALING:
-            self._deal()  # первый отбой - пять карт
+            self._deal()
+            self._engine_move()
         else:
             self._set_enabled_cards_and_controls()
             self._check_for_game_over()

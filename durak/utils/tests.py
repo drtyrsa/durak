@@ -1,8 +1,11 @@
 # -*- coding: utf-8 -*-
+import os
 import unittest
 
 from mock import patch
 
+from durak.consts import HOME_DIR
+from durak.utils import get_filename
 from durak.utils.cards import DurakCard, CardSet
 
 
@@ -278,3 +281,15 @@ class CardSetTest(unittest.TestCase):
             ['7S', 'AD', 'TS', 'QS', '8D', 'AC'], self.trump
         )
         self.assertTrue(card_set.lowest_trump() is None)
+
+
+class GetFilenameFunctionTest(unittest.TestCase):
+    def test_result(self):
+        filename = 'filename'
+
+        with patch.object(os, 'makedirs'):
+            result = get_filename(filename)
+            self.assertEqual(
+                result,
+                os.path.join(os.path.expanduser('~'), HOME_DIR, filename)
+            )

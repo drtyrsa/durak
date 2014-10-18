@@ -17,6 +17,7 @@ Options:
 """
 from collections import Counter
 import logging
+import os.path
 import sys
 
 from docopt import docopt
@@ -30,10 +31,14 @@ ENGINE2 = 2
 DRAW = 3
 
 
-def _play_game(engine1_path, engine2_path):
+def _play_game(engine1_path, engine2_path, log_filename=''):
     engine1 = EngineWrapper(engine1_path)
     engine2 = EngineWrapper(engine2_path)
-    controller = GameController()
+    controller = GameController(
+        player1_name=engine1_path,
+        player2_name=engine2_path,
+        log_filename=log_filename,
+    )
     new_game_data = controller.start_new_game()
 
     engine1.init(new_game_data['trump'])
@@ -110,12 +115,12 @@ def _play_game(engine1_path, engine2_path):
         return DRAW
 
 
-def _do_autoplay(engine1_path, engine2_path, games_number):
+def _do_autoplay(engine1_path, engine2_path, games_number, log_filename=''):
     counter = Counter()
     for i in xrange(games_number):
         sys.stdout.write('\r%d of %d' % (i + 1, games_number))
         sys.stdout.flush()
-        counter[_play_game(engine1_path, engine2_path)] += 1
+        counter[_play_game(engine1_path, engine2_path, log_filename)] += 1
 
     sys.stdout.write('\n')
     sys.stdout.write(
@@ -136,7 +141,8 @@ def main():
     _do_autoplay(
         arguments['<path_to_engine1>'],
         arguments['<path_to_engine2>'],
-        int(arguments['--games-number'])
+        int(arguments['--games-number']),
+        os.path.expanduser(arguments.get('--log-file', '')),
     )
 
 

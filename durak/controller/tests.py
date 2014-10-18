@@ -308,6 +308,7 @@ class GameControllerTest(unittest.TestCase):
         controller._player1.cards = CardSet(cards=(), trump=controller._trump)
         controller._player2.cards = CardSet(cards=(), trump=controller._trump)
         controller._state = controller.States.MOVING
+        controller._logger_enabled = False
 
         controller._check_for_game_over()
         self.assertTrue(controller._state is None)
@@ -322,6 +323,8 @@ class GameControllerTest(unittest.TestCase):
             cards=(DurakCard('KD'), DurakCard('KS')), trump=controller._trump
         )
         controller._state = controller.States.MOVING
+        controller._logger_enabled = False
+
         controller._check_for_game_over()
         self.assertTrue(controller._state is None)
         self.assertEqual(controller._winner, controller._player1)
@@ -651,6 +654,7 @@ class GameControllerTest(unittest.TestCase):
         controller._deck = []
         controller._on_table = Table([DurakCard('6S'), DurakCard('6H')])
         controller._on_table.given_more = {DurakCard('7S'), DurakCard('7H')}
+        controller._logger_enabled = False
 
         controller.deal()
 
@@ -669,6 +673,7 @@ class GameControllerTest(unittest.TestCase):
         controller._deck = []
         controller._on_table = Table([DurakCard('6S'), DurakCard('6H')])
         controller._on_table.given_more = {DurakCard('7S'), DurakCard('7H')}
+        controller._logger_enabled = False
 
         controller.deal()
 
@@ -697,6 +702,7 @@ class GameControllerTest(unittest.TestCase):
         controller._player2.cards = {DurakCard('JS')}
         controller._deck = []
         controller._on_table = Table([DurakCard('6S'), DurakCard('6H')])
+        controller._logger_enabled = False
 
         controller.deal()
 
@@ -718,6 +724,7 @@ class GameControllerTest(unittest.TestCase):
         controller._player2.cards = set()
         controller._deck = []
         controller._on_table = Table([DurakCard('6S'), DurakCard('6H')])
+        controller._logger_enabled = False
 
         controller.deal()
 
@@ -746,6 +753,7 @@ class GameControllerTest(unittest.TestCase):
             DurakCard('TH'),
         ]
         controller._on_table = Table()
+        controller._logger_enabled = False
 
         return_value = controller.deal()
 
@@ -807,6 +815,7 @@ class GameControllerTest(unittest.TestCase):
             DurakCard('TH'),
         ]
         controller._on_table = Table()
+        controller._logger_enabled = False
 
         controller.deal()
 

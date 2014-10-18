@@ -1,13 +1,15 @@
 # -*- coding: utf-8 -*-
 import random
 
-from durak.utils.cards import DurakCard, CardSet
 from durak.controller import exceptions as exes
+from durak.gamelogger import GameLogger
+from durak.utils.cards import DurakCard, CardSet
 
 
 class Player(object):
 
-    def __init__(self):
+    def __init__(self, name=''):
+        self.name = name
         self.cards = None
 
 
@@ -38,16 +40,31 @@ class GameController(object):
         RESPONDING = 'responding'
         GIVING_MORE = 'giving_more'
 
-    def __init__(self):
-        self._player1 = Player()
-        self._player2 = Player()
+    def __init__(self, player1_name='', player2_name='', log_filename='',
+                 overwrite_log=False):
+        self._player1 = Player(player1_name)
+        self._player2 = Player(player2_name)
         self._winner = None
         self._state = None
+
+        self._log_filename = log_filename
+        self._overwrite_log = overwrite_log
+        self._logger = GameLogger()
+        self._logger_enabled = True
 
     def start_new_game(self, ignore_winner=True):
         self._deck = list(DurakCard.all())
         random.shuffle(self._deck)
         self._trump = self._deck[-1]
+
+        self._logger.reset()
+        if self._logger_enabled:
+            self._logger.log_before_game(
+                self._player1.name,
+                self._player2.name,
+                self._deck,
+                self._trump
+            )
 
         self._player1.cards = CardSet(cards=self._deck[:6], trump=self._trump)
         self._player2.cards = CardSet(
@@ -68,6 +85,14 @@ class GameController(object):
 
         self._state = self.States.MOVING
         self._no_response = False
+
+        if self._logger_enabled:
+            self._logger.log_before_move(
+                set(self._player1.cards),
+                set(self._player2.cards),
+                self.to_move,
+                self.deck_count,
+            )
 
         return {
             'player1_cards': CardSet(self._player1.cards, trump=self._trump),
@@ -240,6 +265,12 @@ class GameController(object):
                 expected=self._state, got=self.States.DEALING
             )
 
+        if self._logger_enabled:
+            self._logger.log_after_move(
+                self._on_table,
+                self._on_table.given_more
+            )
+
         if self._no_response:
             self._to_respond.cards.update(self._on_table)
             self._to_respond.cards.update(self._on_table.given_more)
@@ -263,6 +294,15 @@ class GameController(object):
                 self._deck = self._deck[cards_needed:]
 
         self._check_for_game_over()
+
+        if not self.is_game_over():
+            if self._logger_enabled:
+                self._logger.log_before_move(
+                    set(self._player1.cards),
+                    set(self._player2.cards),
+                    self.to_move,
+                    self.deck_count,
+                )
 
         return {
             'player1_cards': CardSet(self._player1.cards, trump=self._trump),
@@ -295,6 +335,17 @@ class GameController(object):
             self._winner = self._player2
 
         self._state = None
+
+        if self._logger_enabled:
+            if self._on_table:
+                self._logger.log_after_move(
+                    self._on_table, self._on_table.given_more
+                )
+            self._logger.log_after_game(self.winner)
+            if self._log_filename:
+                self._logger.write_to_file(
+                    self._log_filename, self._overwrite_log
+                )
 
     @property
     def state(self):

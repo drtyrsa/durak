@@ -9,3 +9,5 @@ CARDS_HIDDEN_IMAGE_PATH = os.path.join(ASSETS_PATH, 'hidden.gif')
 
 CARD_WIDTH = 71
 CARD_HEIGHT = 96
+
+HOME_DIR = '.durak'
