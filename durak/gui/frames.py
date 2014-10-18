@@ -81,20 +81,43 @@ class PlayFrame(wx.Frame):
 
         self.CreateStatusBar()
 
+        self._create_menu()
+
         self._panel.Layout()
         self.Layout()
         self.Refresh()
 
+    def _create_menu(self):
+        self.menu = wx.MenuBar()
+        menu = wx.Menu()  # Игра
+        item = menu.Append(wx.ID_NEW, u'Новая игра', u'Начать новую игру')
+        self.Bind(wx.EVT_MENU, self._start_new_game, item)
+        item = menu.Append(wx.ID_EXIT, u'Выход', u'Выйти из игры')
+        self.Bind(wx.EVT_MENU, self._on_close, item)
+        self.menu.Append(menu, u'Игра')
+
+        menu = wx.Menu()  # Настройки
+        self._by_winner_menu_item = menu.AppendCheckItem(
+            wx.ID_ANY,
+            u'Ход под дурака',
+            u'В новой игре ходит первым победитель в предыдущей'
+        )
+        self.Bind(wx.EVT_MENU, None, self._by_winner_menu_item)
+        self.menu.Append(menu, u'Настройки')
+
+        self.SetMenuBar(self.menu)
+
     def _on_close(self, event):
-        if self._engine is not None:
-            self._engine.game_end()
+        self._stop_engine()
+        event.Skip()
 
-        self.Destroy()
-
-    def _start_new_game(self):
+    def _start_new_game(self, event=None):
+        self._stop_engine()
         self._engine = EngineWrapper('durak-dummy')
 
-        new_game_data = self._controller.start_new_game(ignore_winner=False)
+        new_game_data = self._controller.start_new_game(
+            ignore_winner=not self._by_winner_menu_item.IsChecked()
+        )
         self._trump = new_game_data['trump']
 
         self._deck.set_card_count(self._controller.deck_count)
@@ -300,9 +323,6 @@ class PlayFrame(wx.Frame):
         if not self._controller.is_game_over():
             return
 
-        self._engine.game_end()
-        self.engine = None
-
         wx.CallLater(0, self._new_game_dialog)
 
     def _new_game_dialog(self):
@@ -323,3 +343,8 @@ class PlayFrame(wx.Frame):
             self._start_new_game()
         else:
             self.Close()
+
+    def _stop_engine(self):
+        if self._engine is not None:
+            self._engine.game_end()
+            self.engine = None
