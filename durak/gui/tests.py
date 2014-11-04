@@ -9,7 +9,7 @@ from durak.utils.cards import DurakCard
 from durak.gui.images import CardImageManager
 from durak.gui.widgets import (CardButton, Card, HiddenCard, CardSizer,
                                EnemyCardSizer, TablePanel, DeckPanel,
-                               ControlSizer)
+                               ControlSizer, LabeledCardSizer)
 
 
 class CardImageManagerTest(unittest.TestCase):
@@ -340,6 +340,24 @@ class CardSizerTest(unittest.TestCase):
         self.sizer._trump = DurakCard('6H')
         self.assertEqual(self.sizer.cards, set(self.sizer._buttons_dict))
 
+
+class LabeledCardSizerTest(unittest.TestCase):
+    def setUp(self):
+        self._app = wx.PySimpleApp()
+
+        self.parent = object()
+        with patch('__builtin__.super'):
+            with patch('durak.gui.widgets.wx') as wx_mock:
+                self.staticbox = wx_mock.StaticBox.return_value
+                self.sizer = LabeledCardSizer(parent=self.parent)
+
+    def test_set_label(self):
+        some_label = 'SOME_LABEL'
+        self.sizer.set_label(some_label)
+
+        self.staticbox.SetLabel.assert_called_once_with(some_label)
+
+
 class EnemyCardSizerTest(unittest.TestCase):
     def setUp(self):
         self._app = wx.PySimpleApp()
@@ -471,6 +489,24 @@ class TablePanelTest(unittest.TestCase):
         self.panel._cards[DurakCard('7H')] = Mock()
         self.assertFalse(self.panel._is_odd)
 
+    def test_pop_if_no_given_more(self):
+        card_mock = Mock()
+        self.panel._cards[DurakCard('6H')] = card_mock
+
+        self.assertEqual(self.panel.pop(), DurakCard('6H'))
+        self.assertDictEqual(self.panel._cards, {})
+        card_mock.Destroy.assert_called()
+
+    def test_pop_with_given_more(self):
+        card_mock = Mock()
+        self.panel._cards[DurakCard('6H')] = Mock()
+        self.panel._cards[DurakCard('7H')] = card_mock
+        self.panel._given_more = [DurakCard('7H')]
+
+        self.assertEqual(self.panel.pop(), DurakCard('7H'))
+        self.assertItemsEqual(self.panel._cards.keys(), [DurakCard('6H')])
+        card_mock.Destroy.assert_called()
+
 
 class DeckPanelTest(unittest.TestCase):
     def setUp(self):
@@ -478,7 +514,8 @@ class DeckPanelTest(unittest.TestCase):
 
         with patch('__builtin__.super'):
             with patch.object(DeckPanel, '_create_widgets'):
-                self.panel = DeckPanel(parent=None)
+                with patch.object(DeckPanel, 'SetSizeHints'):
+                    self.panel = DeckPanel(parent=None)
 
     def test_create_widgets(self):
         with patch('durak.gui.widgets.wx') as wx_patch_mock:

@@ -29,6 +29,7 @@ setup(
             'durak-autoplay=durak.autoplay:main',
             'durak-dummy=durak.engine.dummy:main',
             'durak-gui=durak.gui.play_app:main',
+            'durak-logviewer=durak.gui.view_log_app:main',
         ],
     },
     install_requires=[

@@ -46,17 +46,18 @@ class HiddenCard(wx.StaticBitmap):
         super(HiddenCard, self).__init__(*args, **kwargs)
 
 
-class CardSizer(wx.BoxSizer):
+class CardSizerMixin(object):
     def __init__(self, *args, **kwargs):
         self._parent = kwargs.pop('parent')
-        self._on_click = kwargs.pop('on_click')
-        super(CardSizer, self).__init__(*args, **kwargs)
+        self._on_click = kwargs.pop('on_click', None)
+        super(CardSizerMixin, self).__init__(*args, **kwargs)
         self._trump = None
         self._buttons_dict = {}
 
     def add_card(self, card, do_layout=False):
         card_button = CardButton(parent=self._parent, card=card)
-        card_button.Bind(wx.EVT_BUTTON, self._on_click)
+        if self._on_click is not None:
+            card_button.Bind(wx.EVT_BUTTON, self._on_click)
 
         self._insert_button(card_button)
 
@@ -118,6 +119,22 @@ class CardSizer(wx.BoxSizer):
                 card_button.Enable()
             else:
                 card_button.Disable()
+
+
+class CardSizer(CardSizerMixin, wx.BoxSizer):
+    pass
+
+
+class LabeledCardSizer(CardSizerMixin, wx.StaticBoxSizer):
+    def __init__(self, *args, **kwargs):
+        parent = kwargs['parent']
+        self._staticbox = wx.StaticBox(parent)
+        super(LabeledCardSizer, self).__init__(
+            self._staticbox, *args, **kwargs
+        )
+
+    def set_label(self, text):
+        return self._staticbox.SetLabel(text)
 
 
 class EnemyCardSizer(wx.BoxSizer):
@@ -215,6 +232,16 @@ class TablePanel(wx.Panel):
         self._cards = OrderedDict()
         self._given_more = []
 
+    def pop(self):
+        if self._given_more:
+            card = self._given_more.pop()
+            card_img = self._cards.pop(card)
+        else:
+            card, card_img = self._cards.popitem(last=True)
+
+        card_img.Destroy()
+        return card
+
     @property
     def given_more(self):
         return self._given_more[:]
@@ -234,6 +261,8 @@ class DeckPanel(wx.Panel):
         self._create_widgets()
 
         self._trump_card = None
+
+        self.SetSizeHints(200, 150)
 
     def _create_widgets(self):
         self._opened_trump = wx.StaticBitmap(parent=self, pos=(0, 12))

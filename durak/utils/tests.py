@@ -284,12 +284,22 @@ class CardSetTest(unittest.TestCase):
 
 
 class GetFilenameFunctionTest(unittest.TestCase):
-    def test_result(self):
-        filename = 'filename'
+    def setUp(self):
+        self.filename = 'filename'
+        self.expected = os.path.join(
+            os.path.expanduser('~'), HOME_DIR, self.filename
+        )
 
-        with patch.object(os, 'makedirs'):
-            result = get_filename(filename)
-            self.assertEqual(
-                result,
-                os.path.join(os.path.expanduser('~'), HOME_DIR, filename)
-            )
+    def test_path_is_just_joined_if_parent_dir_exists(self):
+        with patch.object(os, 'makedirs') as makedirs_mock:
+            with patch.object(os.path, 'exists', return_value=True):
+                result = get_filename(self.filename)
+                self.assertEqual(result, self.expected)
+                self.assertFalse(makedirs_mock.called)
+
+    def test_parent_dir_is_created_if_does_not_exist(self):
+        with patch.object(os, 'makedirs') as makedirs_mock:
+            with patch.object(os.path, 'exists', return_value=False):
+                result = get_filename(self.filename)
+                self.assertEqual(result, self.expected)
+                self.assertTrue(makedirs_mock.called)

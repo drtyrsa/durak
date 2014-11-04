@@ -115,7 +115,10 @@ class PlayFrame(wx.Frame):
 
     def _on_close(self, event):
         self._stop_engine()
-        event.Skip()
+        if event.GetEventType() in wx.EVT_CLOSE.evtType:
+            event.Skip()
+        else:
+            self.Close()
 
     def _start_new_game(self, event=None):
         self._stop_engine()

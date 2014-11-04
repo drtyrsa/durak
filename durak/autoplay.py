@@ -142,7 +142,7 @@ def main():
         arguments['<path_to_engine1>'],
         arguments['<path_to_engine2>'],
         int(arguments['--games-number']),
-        os.path.expanduser(arguments.get('--log-file', '')),
+        os.path.expanduser(arguments.get('--log-file') or ''),
     )
 
 
