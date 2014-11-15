@@ -43,9 +43,10 @@ class DummyEngine(BaseEngine):
     def give_more(self, on_table, gamedata):
         assert self._cards
 
+        max_count = gamedata['enemy_count'] - 1
         cards = self._cards.cards_that_can_be_added_to(
             on_table, including_trumps=False
-        )
+        )[:max_count]
         self._cards.difference_update(cards)
         return ' '.join(map(str, cards))
 

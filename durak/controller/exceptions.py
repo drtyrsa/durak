@@ -27,3 +27,11 @@ class PlayerDoesNotHaveCard(GameControllerError):
 
 class InvalidCard(GameControllerError):
     pass
+
+
+class TooMuchGiveMoreCards(GameControllerError):
+
+    def __init__(self, got_count, max_count):
+        super(TooMuchGiveMoreCards, self).__init__(
+            'Too much give more cards: %d (max is %d)' % (got_count, max_count)
+        )

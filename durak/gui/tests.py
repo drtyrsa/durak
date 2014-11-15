@@ -394,6 +394,12 @@ class EnemyCardSizerTest(unittest.TestCase):
             self.sizer.decrement()
             set_count_mock.assert_called_once_with(1)
 
+    def test_count_property(self):
+        cards = [Mock(), Mock()]
+        self.sizer._cards = cards
+
+        self.assertEqual(self.sizer.count, len(cards))
+
 
 class TablePanelTest(unittest.TestCase):
     def setUp(self):

@@ -1,9 +1,12 @@
 # -*- coding: utf-8 -*-
-import random
+from random import SystemRandom
 
 from durak.controller import exceptions as exes
 from durak.gamelogger import GameLogger
 from durak.utils.cards import DurakCard, CardSet
+
+
+random = SystemRandom()
 
 
 class Player(object):
@@ -236,7 +239,12 @@ class GameController(object):
             self._state = self.States.DEALING
             return
 
+        # нельзя давать больше карт, чем есть у отбивающегося
+        max_cards = len(self._to_respond.cards) - 1
         cards = set(map(DurakCard, cards))
+        if len(cards) > max_cards:
+            raise exes.TooMuchGiveMoreCards(len(cards), max_cards)
+
         invalid_cards = cards - self._to_move.cards
         if invalid_cards:
             raise exes.PlayerDoesNotHaveCard(*invalid_cards)

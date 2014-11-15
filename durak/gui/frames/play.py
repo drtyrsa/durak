@@ -173,11 +173,20 @@ class PlayFrame(wx.Frame):
                 self.SetStatusText(u'Ходите')
         elif (self._controller.to_move == self.HUMAN and
                 self._controller.state == self._controller.States.GIVING_MORE):
-            self._bottom_player_sizer.set_enabled_cards(
-                human_cards.cards_that_can_be_added_to(on_table)
-            )
             self._control_sizer.show_button(self._control_sizer.ENOUGH)
-            self.SetStatusText(u'Беру. Подкидывайте еще, если есть')
+            if self._remained_give_more > 0:
+                self._bottom_player_sizer.set_enabled_cards(
+                    human_cards.cards_that_can_be_added_to(on_table)
+                )
+                self.SetStatusText(
+                    (u'Беру. Подкидывайте еще, если есть. '
+                     u'Еще можно подкинуть карт: %d.') %
+                     self._remained_give_more
+                )
+            else:
+                self._bottom_player_sizer.disable_all()
+                self.SetStatusText(u'Беру. Больше подкидывать нельзя')
+
         elif (self._controller.to_move == self.ENGINE and
                 self._controller.state == self._controller.States.RESPONDING):
             assert on_table
@@ -357,4 +366,13 @@ class PlayFrame(wx.Frame):
     def _stop_engine(self):
         if self._engine is not None:
             self._engine.game_end()
-            self.engine = None
+            self._engine = None
+
+    @property
+    def _remained_give_more(self):
+        assert self._controller.state == self._controller.States.GIVING_MORE
+
+        return (
+            (self._top_player_sizer.count - 1) -
+            len(self._table.given_more)
+        )

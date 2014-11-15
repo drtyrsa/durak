@@ -589,6 +589,15 @@ class GameControllerTest(unittest.TestCase):
         controller._player1.cards = CardSet(
             cards=(DurakCard('AC'), DurakCard('AH')), trump=controller._trump
         )
+        controller._player2.cards = CardSet(
+            cards=(
+                DurakCard('7C'),
+                DurakCard('7H'),
+                DurakCard('7D'),
+                DurakCard('7S'),
+            ),
+            trump=controller._trump
+        )
         controller._on_table = [DurakCard('6D')]
 
         with self.assertRaises(exes.PlayerDoesNotHaveCard):
@@ -606,12 +615,38 @@ class GameControllerTest(unittest.TestCase):
             cards=(DurakCard('AC'), DurakCard('AH'), DurakCard('6H')),
             trump=controller._trump
         )
+        controller._player2.cards = CardSet(
+            cards=(
+                DurakCard('7C'),
+                DurakCard('7H'),
+                DurakCard('7D'),
+                DurakCard('7S'),
+            ),
+            trump=controller._trump
+        )
         controller._on_table = [DurakCard('6D')]
 
         with self.assertRaises(exes.InvalidCard):
             controller.register_give_more([
                 DurakCard('AC'), DurakCard('AH'), DurakCard('6H')
             ])
+
+    def test_register_give_more_is_error_if_max_count_is_exceeded(self):
+        controller = GameController()
+        controller._state = controller.States.GIVING_MORE
+        controller._no_response = True
+        controller._to_move = controller._player1
+        controller._trump = DurakCard('6H')
+        controller._player1.cards = CardSet(
+            cards=(DurakCard('AC'), DurakCard('AH')), trump=controller._trump
+        )
+        controller._player2.cards = CardSet(
+            cards=(DurakCard('7C'),), trump=controller._trump
+        )
+        controller._on_table = [DurakCard('6D')]
+
+        with self.assertRaises(exes.TooMuchGiveMoreCards):
+            controller.register_give_more([DurakCard('6S'), DurakCard('6H')])
 
     def test_successful_register_give_more(self):
         controller = GameController()
@@ -622,6 +657,10 @@ class GameControllerTest(unittest.TestCase):
         controller._trump = DurakCard('6H')
         controller._player1.cards = CardSet(
             cards=(DurakCard('AC'), DurakCard('6S'), DurakCard('6H')),
+            trump=controller._trump
+        )
+        controller._player2.cards = CardSet(
+            cards=(DurakCard('7C'), DurakCard('7H'), DurakCard('7D')),
             trump=controller._trump
         )
         controller._on_table = Table([DurakCard('6D')])

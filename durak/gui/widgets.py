@@ -148,21 +148,19 @@ class EnemyCardSizer(wx.BoxSizer):
     def set_count(self, count):
         assert count >= 0
 
-        current_count = len(self._cards)
-
-        if count == current_count:
+        if count == self.count:
             return
 
-        elif count < current_count:
-            for _ in xrange(count, current_count):
+        elif count < self.count:
+            for _ in xrange(count, self.count):
                 card = self._cards.pop()
                 self.Detach(card)
                 card.Destroy()
 
-        elif count > current_count:
+        elif count > self.count:
             cards = [
                 HiddenCard(parent=self._parent)
-                for _ in xrange(current_count, count)
+                for _ in xrange(self.count, count)
             ]
             self.AddMany((card, 0, wx.ALL, self.BORDER_SIZE) for card in cards)
             self._cards.extend(cards)
@@ -173,6 +171,10 @@ class EnemyCardSizer(wx.BoxSizer):
         assert self._cards
 
         self.set_count(len(self._cards) - 1)
+
+    @property
+    def count(self):
+        return len(self._cards)
 
 
 class TablePanel(wx.Panel):
