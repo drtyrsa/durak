@@ -3,19 +3,20 @@
 """Durak Autoplay
 
 Usage:
-  durak-autoplay <path_to_engine1> <path_to_engine2> [--games-number=<count>] [--log-file=<path_to_file>] [--debug]
+  durak-autoplay <path_to_engine1> <path_to_engine2> [--matches-number=<count>] [--match-size=<count>] [--log-file=<path_to_file>] [--debug]
   durak-autoplay (-h | --help)
   durak-autoplay --version
 
 Options:
   -h --help                  Show this help.
   --version                  Show version.
-  --games-number=<count>     Number of games to play [default: 100].
+  --matches-number=<count>   Number of matches to play [default: 10].
+  --match-size=<count>       Number of games per match [default: 100].
   --log-file=<path_to_file>  Path to save games log file.
   --debug                    Print debug output.
 
 """
-from collections import Counter
+from collections import Counter, defaultdict
 import logging
 import os.path
 import sys
@@ -115,21 +116,48 @@ def _play_game(engine1_path, engine2_path, log_filename=''):
         return DRAW
 
 
-def _do_autoplay(engine1_path, engine2_path, games_number, log_filename=''):
-    counter = Counter()
-    for i in xrange(games_number):
-        sys.stdout.write('\r%d of %d' % (i + 1, games_number))
-        sys.stdout.flush()
-        counter[_play_game(engine1_path, engine2_path, log_filename)] += 1
+def _do_autoplay(engine1_path, engine2_path, matches_number, match_size,
+                 log_filename=''):
+    total_games = matches_number * match_size
+    game_counter = 1
+    matches = []
+    match_score = defaultdict(float)
+    sys.stdout.write(
+        'Playing %d matches, %d games each\n' % (matches_number, match_size)
+    )
+    for _ in xrange(matches_number):
+        match = Counter()
+        for __ in xrange(match_size):
+            sys.stdout.write('\r%d of %d' % (game_counter, total_games))
+            sys.stdout.flush()
+
+            game_result = _play_game(engine1_path, engine2_path, log_filename)
+            match[game_result] += 1
+            game_counter += 1
+
+        if match[ENGINE1] > match[ENGINE2]:
+            match_score[ENGINE1] += 1.0
+        elif match[ENGINE1] < match[ENGINE2]:
+            match_score[ENGINE2] += 1.0
+        else:
+            match_score[ENGINE1] += 0.5
+            match_score[ENGINE2] += 0.5
+        matches.append(match)
 
     sys.stdout.write('\n')
     sys.stdout.write(
-        u'Engine1 (%s) wins:\t%d\n' % (engine1_path, counter[ENGINE1])
+        u'Engine1 (%s) scores:\t%.1f\n' % (engine1_path, match_score[ENGINE1])
     )
     sys.stdout.write(
-        u'Engine2 (%s) wins:\t%d\n' % (engine2_path, counter[ENGINE2])
+        u'Engine2 (%s) scores:\t%.1f\n\n' % (engine2_path, match_score[ENGINE2])
     )
-    sys.stdout.write(u'Draws:\t%d\n' % counter[DRAW])
+
+    for index, match in enumerate(matches, start=1):
+        sys.stdout.write(
+            'Match %d - Engine1 wins: %d, Engine2 wins: %d, Draws: %d\n' % (
+                index, match[ENGINE1], match[ENGINE2], match[DRAW]
+            )
+        )
 
 
 def main():
@@ -141,7 +169,8 @@ def main():
     _do_autoplay(
         arguments['<path_to_engine1>'],
         arguments['<path_to_engine2>'],
-        int(arguments['--games-number']),
+        int(arguments['--matches-number']),
+        int(arguments['--match-size']),
         os.path.expanduser(arguments.get('--log-file') or ''),
     )
 
