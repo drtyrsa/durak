@@ -11,3 +11,4 @@ CARD_WIDTH = 71
 CARD_HEIGHT = 96
 
 HOME_DIR = '.durak'
+SETTINGS_FILENAME = 'settings.json'

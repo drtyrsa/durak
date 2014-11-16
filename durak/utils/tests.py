@@ -1,11 +1,12 @@
 # -*- coding: utf-8 -*-
+import json
 import os
 import unittest
 
-from mock import patch
+from mock import mock_open, patch
 
 from durak.consts import HOME_DIR
-from durak.utils import get_filename
+from durak.utils import get_filename, get_setting, set_setting
 from durak.utils.cards import DurakCard, CardSet
 
 
@@ -303,3 +304,85 @@ class GetFilenameFunctionTest(unittest.TestCase):
                 result = get_filename(self.filename)
                 self.assertEqual(result, self.expected)
                 self.assertTrue(makedirs_mock.called)
+
+
+class GetSettingFunctionTest(unittest.TestCase):
+    SETTING_NAME = 'some_setting'
+    DEFAULT = 'default'
+    VALUE = 'some_value'
+
+    def setUp(self):
+        self.open_mock = mock_open(read_data=json.dumps(
+            {self.SETTING_NAME: self.VALUE}
+        ))
+        self._open_patcher = patch(
+            '__builtin__.open', self.open_mock, create=True
+        )
+        self._open_patcher.start()
+
+        self._makedirs_patcher = patch.object(os, 'makedirs')
+        self._makedirs_patcher.start()
+
+    def tearDown(self):
+        self._open_patcher.stop()
+        self._makedirs_patcher.stop()
+
+    def test_if_file_does_not_exist_default_is_returned(self):
+        with patch.object(os.path, 'exists', return_value=False):
+            result = get_setting(self.SETTING_NAME, self.DEFAULT)
+
+        self.assertEqual(result, self.DEFAULT)
+        self.assertFalse(self.open_mock.called)
+
+    def test_if_key_exists_in_json_it_is_returned(self):
+        with patch.object(os.path, 'exists', return_value=True):
+            result = get_setting(self.SETTING_NAME, self.DEFAULT)
+
+        self.assertEqual(result, self.VALUE)
+        self.assertTrue(self.open_mock.called)
+
+    def test_if_key_does_not_exist_in_json_default_is_returned(self):
+        with patch.object(os.path, 'exists', return_value=True):
+            result = get_setting('another_setting', self.DEFAULT)
+
+        self.assertEqual(result, self.DEFAULT)
+        self.assertTrue(self.open_mock.called)
+
+
+class SetSettingFunctionTest(unittest.TestCase):
+    SETTING_NAME = 'some_setting'
+    VALUE = 'some_value'
+
+    def setUp(self):
+        self.open_mock = mock_open(read_data=json.dumps(
+            {self.SETTING_NAME: 'old_value', 'some': 'other'}
+        ))
+        self._open_patcher = patch(
+            '__builtin__.open', self.open_mock, create=True
+        )
+        self._open_patcher.start()
+
+        self._makedirs_patcher = patch.object(os, 'makedirs')
+        self._makedirs_patcher.start()
+
+    def tearDown(self):
+        self._open_patcher.stop()
+        self._makedirs_patcher.stop()
+
+    def test_if_file_does_not_exist_it_is_created(self):
+        with patch.object(os.path, 'exists', return_value=False):
+            with patch.object(json, 'dump') as dump_mock:
+                set_setting(self.SETTING_NAME, self.VALUE)
+
+        dump_mock.assert_called_once_with(
+            {self.SETTING_NAME: self.VALUE}, self.open_mock()
+        )
+
+    def test_if_file_exists_json_is_updated(self):
+        with patch.object(os.path, 'exists', return_value=True):
+            with patch.object(json, 'dump') as dump_mock:
+                set_setting(self.SETTING_NAME, self.VALUE)
+
+        dump_mock.assert_called_once_with(
+            {self.SETTING_NAME: self.VALUE, 'some': 'other'}, self.open_mock()
+        )

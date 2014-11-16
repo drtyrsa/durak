@@ -1,15 +1,18 @@
 # -*- coding: utf-8 -*-
-import os
+import os.path
 
 import wx
 
 from durak.gamelogger import LogViewer
 from durak.gui.widgets import LabeledCardSizer, TablePanel, DeckPanel
+from durak.utils import get_setting, set_setting
 
 
 class ViewLogFrame(wx.Frame):
     WIDTH = 800
     HEIGHT = 500
+
+    LAST_DIR_SETTING = 'last_log_dir'
 
     def __init__(self):
         super(ViewLogFrame, self).__init__(
@@ -147,8 +150,11 @@ class ViewLogFrame(wx.Frame):
             self.Close()
 
     def _menu_on_open(self, event=None):
+        last_directory = get_setting(
+            self.LAST_DIR_SETTING, os.path.expanduser('~')
+        )
         dialog = wx.FileDialog(
-            self, u'Выберите файл лога', os.getcwd(), "", "*", wx.OPEN
+            self, u'Выберите файл лога', last_directory, "", "*", wx.OPEN
         )
         if dialog.ShowModal() != wx.ID_OK:
             self.Close()
@@ -157,6 +163,8 @@ class ViewLogFrame(wx.Frame):
         dialog.Destroy()
 
         self._log_viever = LogViewer(filename)
+        set_setting(self.LAST_DIR_SETTING, os.path.dirname(filename))
+
         self._menu_on_select_game()
 
     def _menu_on_select_game(self, event=None):
