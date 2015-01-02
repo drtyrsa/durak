@@ -10,7 +10,7 @@ def show_readme():
 
 setup(
     name='durak',
-    version='0.1',
+    version='0.1.0',
     classifiers=[
         'Development Status :: 3 - Alpha',
         'License :: OSI Approved :: MIT License',
