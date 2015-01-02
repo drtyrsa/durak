@@ -75,8 +75,6 @@ class GameController(object):
         )
         self._deck = self._deck[12:]
 
-        self._first_discard_completed = False
-
         if not ignore_winner and self._winner is not None:
             self._to_move = self._winner
         else:
@@ -220,8 +218,6 @@ class GameController(object):
 
         if not (self._to_respond.cards and self._to_move.cards):
             self._state = self.States.DEALING
-        elif not self._first_discard_completed and len(self._on_table) >= 10:
-            self._state = self.States.DEALING
         else:
             self._state = self.States.MOVING
 
@@ -286,8 +282,6 @@ class GameController(object):
         else:
             self._to_move = self._to_respond
             self._discarded.extend(self._on_table)
-            if not self._first_discard_completed:
-                self._first_discard_completed = True
 
         self._on_table.clear()
         self._state = self.States.MOVING

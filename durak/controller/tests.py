@@ -486,7 +486,6 @@ class GameControllerTest(unittest.TestCase):
         controller = GameController()
         controller._state = controller.States.RESPONDING
         controller._to_move = controller._player2
-        controller._first_discard_completed = True
         controller._trump = DurakCard('6H')
         controller._deck = [DurakCard('JH')]
         controller._player1.cards = CardSet(
@@ -530,35 +529,6 @@ class GameControllerTest(unittest.TestCase):
             cards=(DurakCard('AC'),), trump=controller._trump
         )
         controller._on_table = [DurakCard('6D')]
-
-        controller.register_response(DurakCard('AH'))
-
-        self.assertEqual(controller.state, controller.States.DEALING)
-
-    def test_register_response_not_allows_moving_if_first_discard(self):
-        controller = GameController()
-        controller._state = controller.States.RESPONDING
-        controller._first_discard_completed = False
-        controller._to_move = controller._player2
-        controller._trump = DurakCard('6H')
-        controller._deck = [DurakCard('JH')]
-        controller._player1.cards = CardSet(
-            cards=(DurakCard('AH'), DurakCard('KC')), trump=controller._trump
-        )
-        controller._player2.cards = CardSet(
-            cards=(DurakCard('AC'),), trump=controller._trump
-        )
-        controller._on_table = [
-            DurakCard('7D'),
-            DurakCard('8D'),
-            DurakCard('7C'),
-            DurakCard('8C'),
-            DurakCard('7H'),
-            DurakCard('8H'),
-            DurakCard('7S'),
-            DurakCard('8S'),
-            DurakCard('6D')
-        ]
 
         controller.register_response(DurakCard('AH'))
 
@@ -734,7 +704,6 @@ class GameControllerTest(unittest.TestCase):
         controller._trump = DurakCard('6H')
         controller._state = controller.States.DEALING
         controller._no_response = False
-        controller._first_discard_completed = True
         controller._discarded = []
         controller._to_move = controller._player1
         controller._player1.cards = {DurakCard('JH')}
@@ -751,30 +720,11 @@ class GameControllerTest(unittest.TestCase):
         self.assertEqual(controller._to_move, controller._player2)
         self.assertEqual(controller._state, controller.States.MOVING)
 
-    def test_deal_sets_first_discard(self):
-        controller = GameController()
-        controller._trump = DurakCard('6H')
-        controller._state = controller.States.DEALING
-        controller._no_response = False
-        controller._first_discard_completed = False
-        controller._discarded = []
-        controller._to_move = controller._player1
-        controller._player1.cards = set()
-        controller._player2.cards = set()
-        controller._deck = []
-        controller._on_table = Table([DurakCard('6S'), DurakCard('6H')])
-        controller._logger_enabled = False
-
-        controller.deal()
-
-        self.assertTrue(controller._first_discard_completed)
-
     def test_deal_cards_and_return_value(self):
         controller = GameController()
         controller._trump = DurakCard('6H')
         controller._state = controller.States.DEALING
         controller._no_response = False
-        controller._first_discard_completed = True
         controller._discarded = []
         controller._to_move = controller._player1
         controller._player1.cards = {DurakCard('6S'), DurakCard('6H')}
@@ -829,7 +779,6 @@ class GameControllerTest(unittest.TestCase):
         controller._trump = DurakCard('6H')
         controller._state = controller.States.DEALING
         controller._no_response = False
-        controller._first_discard_completed = True
         controller._discarded = []
         controller._to_move = controller._player1
         controller._player1.cards = {
