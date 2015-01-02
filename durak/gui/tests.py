@@ -388,11 +388,17 @@ class EnemyCardSizerTest(unittest.TestCase):
                 self.assertTrue(AddMany_mock.called)
                 self.assertEqual(len(self.sizer._cards), 2)
 
-    def test_decrement(self):
-        self.sizer._cards = [Mock(), Mock()]
+    def test_increment(self):
+        self.sizer._cards = [Mock(), Mock(), Mock()]
         with patch.object(self.sizer, 'set_count') as set_count_mock:
-            self.sizer.decrement()
-            set_count_mock.assert_called_once_with(1)
+            self.sizer.increment(2)
+            set_count_mock.assert_called_once_with(3 + 2)
+
+    def test_decrement(self):
+        self.sizer._cards = [Mock(), Mock(), Mock()]
+        with patch.object(self.sizer, 'set_count') as set_count_mock:
+            self.sizer.decrement(2)
+            set_count_mock.assert_called_once_with(3 - 2)
 
     def test_count_property(self):
         cards = [Mock(), Mock()]

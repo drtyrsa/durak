@@ -167,10 +167,15 @@ class EnemyCardSizer(wx.BoxSizer):
 
         self.Layout()
 
-    def decrement(self):
+    def decrement(self, value=1):
         assert self._cards
 
-        self.set_count(len(self._cards) - 1)
+        self.set_count(self.count - value)
+
+    def increment(self, value=1):
+        assert self._cards
+
+        self.set_count(self.count + value)
 
     @property
     def count(self):

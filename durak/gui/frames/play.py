@@ -332,16 +332,13 @@ class PlayFrame(wx.Frame):
             deal_data['player2_cards'],
             self._controller.get_game_data_for(self.ENGINE)
         )
-        self._top_player_sizer.set_count(len(deal_data['player2_cards']))
+        self._top_player_sizer.increment(len(deal_data['player2_cards']))
 
         self._table.remove_all()
 
         self._deck.set_card_count(self._controller.deck_count)
 
-        cards_added = (
-            deal_data['player1_cards'] - self._bottom_player_sizer.cards
-        )
-        for card in cards_added:
+        for card in deal_data['player1_cards']:
             self._bottom_player_sizer.add_card(card)
         self._bottom_player_sizer.Layout()
 

@@ -183,3 +183,6 @@ class CardSet(set):
         if not trumps:
             return None
         return trumps[0]
+
+    def update(self, iterable):
+        return super(CardSet, self).update(map(DurakCard, iterable))

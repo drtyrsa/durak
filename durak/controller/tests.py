@@ -770,8 +770,8 @@ class GameControllerTest(unittest.TestCase):
             controller._deck, [DurakCard('TS'), DurakCard('TH')]
         )
         self.assertDictEqual(return_value, {
-            'player1_cards': controller._player1.cards,
-            'player2_cards': controller._player2.cards
+            'player1_cards': controller._player1.cards - {DurakCard('6S'), DurakCard('6H')},
+            'player2_cards': controller._player2.cards - {DurakCard('7S'), DurakCard('7H')},
         })
 
     def test_deal_no_cards_needed(self):

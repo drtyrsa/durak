@@ -275,6 +275,9 @@ class GameController(object):
                 self._on_table.given_more
             )
 
+        player1_cards_before = CardSet(self._player1.cards, trump=self._trump)
+        player2_cards_before = CardSet(self._player2.cards, trump=self._trump)
+
         if self._no_response:
             self._to_respond.cards.update(self._on_table)
             self._to_respond.cards.update(self._on_table.given_more)
@@ -307,8 +310,14 @@ class GameController(object):
                 )
 
         return {
-            'player1_cards': CardSet(self._player1.cards, trump=self._trump),
-            'player2_cards': CardSet(self._player2.cards, trump=self._trump),
+            'player1_cards': (
+                CardSet(self._player1.cards, trump=self._trump) -
+                player1_cards_before
+            ),
+            'player2_cards': (
+                CardSet(self._player2.cards, trump=self._trump) -
+                player2_cards_before
+            ),
         }
 
     def is_game_over(self):

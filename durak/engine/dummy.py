@@ -7,12 +7,11 @@ from durak.utils.cards import CardSet
 class DummyEngine(BaseEngine):
 
     def init(self, trump):
-        self._cards = None
-        self._trump = trump
+        self._cards = CardSet([], trump)
         return 'ok'
 
     def deal(self, cards, gamedata):
-        self._cards = CardSet(cards, self._trump)
+        self._cards.update(cards)
         return 'ok'
 
     def move(self, on_table, gamedata):
