@@ -154,7 +154,7 @@ class ViewLogFrame(wx.Frame):
             self.LAST_DIR_SETTING, os.path.expanduser('~')
         )
         dialog = wx.FileDialog(
-            self, u'Выберите файл лога', last_directory, "", "*", wx.OPEN
+            self, u'Выберите файл лога', last_directory, '', '*', wx.OPEN
         )
         if dialog.ShowModal() != wx.ID_OK:
             self.Close()

@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 import os.path
 
+
 current_dir = os.path.dirname(os.path.realpath(__file__))
 ASSETS_PATH = os.path.join(current_dir, 'assets')
 
@@ -12,3 +13,8 @@ CARD_HEIGHT = 96
 
 HOME_DIR = '.durak'
 SETTINGS_FILENAME = 'settings.json'
+
+ENGINES_SETTING = 'engines'
+DEFAULT_ENGINES = [
+    {'name': 'Durak dummy', 'path': 'durak-dummy', 'selected': True},
+]

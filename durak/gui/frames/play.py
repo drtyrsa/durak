@@ -1,11 +1,13 @@
 # -*- coding: utf-8 -*-
 import wx
 
+from durak import consts
 from durak.controller import GameController
 from durak.engine.wrapper import EngineWrapper
+from durak.gui.frames.select_engine_dialog import SelectEngineDialog
 from durak.gui.widgets import (CardSizer, EnemyCardSizer, TablePanel,
                                DeckPanel, ControlSizer)
-from durak.utils import get_filename
+from durak.utils import get_filename, get_setting
 
 
 class PlayFrame(wx.Frame):
@@ -18,7 +20,7 @@ class PlayFrame(wx.Frame):
     def __init__(self):
         super(PlayFrame, self).__init__(
             parent=None,
-            title='Durak',
+            title='Durak GUI',
             size=(self.WIDTH, self.HEIGHT)
         )
 
@@ -31,6 +33,8 @@ class PlayFrame(wx.Frame):
             overwrite_log=True
         )
         self._engine = None
+        self._engine_path = None
+
         self._trump = None
 
         self._start_new_game()
@@ -109,6 +113,10 @@ class PlayFrame(wx.Frame):
             u'В новой игре ходит первым победитель в предыдущей'
         )
         self.Bind(wx.EVT_MENU, None, self._by_winner_menu_item)
+        item = menu.Append(
+            wx.ID_ANY, u'Выбрать движок...', u'Выбрать компьютерного соперника'
+        )
+        self.Bind(wx.EVT_MENU, self._on_select_engine, item)
         self.menu.Append(menu, u'Настройки')
 
         self.SetMenuBar(self.menu)
@@ -122,7 +130,8 @@ class PlayFrame(wx.Frame):
 
     def _start_new_game(self, event=None):
         self._stop_engine()
-        self._engine = EngineWrapper('durak-dummy')
+        self._engine = EngineWrapper(self._get_engine_path())
+        self.SetTitle('Durak GUI (vs %s)' % self._get_engine_path())
 
         new_game_data = self._controller.start_new_game(
             ignore_winner=not self._by_winner_menu_item.IsChecked()
@@ -376,3 +385,25 @@ class PlayFrame(wx.Frame):
             (self._top_player_sizer.count - 1) -
             len(self._table.given_more)
         )
+
+    def _on_select_engine(self, event):
+        dialog = SelectEngineDialog()
+        dialog.ShowModal()
+        if dialog.selected_engine:
+            self._engine_path = dialog.selected_engine
+
+        dialog.Destroy()
+
+    def _get_engine_path(self):
+        if self._engine_path is not None:
+            return self._engine_path
+
+        path = None
+        engines = get_setting(consts.ENGINES_SETTING, consts.DEFAULT_ENGINES)
+        for engine_data in engines:
+            if engine_data.get('selected'):
+                path = engine_data['path']
+                break
+
+        self._engine_path = path
+        return self._engine_path
