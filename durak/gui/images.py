@@ -22,7 +22,7 @@ class CardImageManager(object):
         )
 
         for card in DurakCard.all():
-            left_top_x = card.numeric_value * self._card_width
+            left_top_x = card.numeric_rank * self._card_width
             left_top_y = card.numeric_suit * self._card_height
             self._data[card] = wx_bitmap.GetSubBitmap(
                 (left_top_x, left_top_y, self._card_width, self._card_height)

@@ -14,17 +14,17 @@ class DurakCardTest(unittest.TestCase):
 
     def test_new_accepts_positional_arguments(self):
         card = DurakCard('6', 'H')
-        self.assertEqual(card.numeric_value, 0)  # first elem of DurakCard.VALUES
+        self.assertEqual(card.numeric_rank, 0)  # first elem of DurakCard.RANKS
         self.assertEqual(card.suit, 'H')
 
     def test_new_accepts_keyword_arguments(self):
-        card = DurakCard(value='6', suit='H')
-        self.assertEqual(card.numeric_value, 0)  # first elem of DurakCard.VALUES
+        card = DurakCard(rank='6', suit='H')
+        self.assertEqual(card.numeric_rank, 0)  # first elem of DurakCard.RANKS
         self.assertEqual(card.suit, 'H')
 
     def test_new_accepts_strings(self):
         card = DurakCard('6H')
-        self.assertEqual(card.numeric_value, 0)  # first elem of DurakCard.VALUES
+        self.assertEqual(card.numeric_rank, 0)  # first elem of DurakCard.RANKS
         self.assertEqual(card.suit, 'H')
 
     def test_new_raises_exception_on_not_2_chars_length_string(self):
@@ -36,25 +36,25 @@ class DurakCardTest(unittest.TestCase):
             DurakCard('6', 'H', some='thing')
 
         with self.assertRaises(ValueError):
-            DurakCard(value='6')
+            DurakCard(rank='6')
 
     def test_new_raises_exception_on_invalid_suit(self):
         with self.assertRaises(ValueError):
             DurakCard('6', 'L')
 
-    def test_new_raises_exception_on_invalid_value(self):
+    def test_new_raises_exception_on_invalid_rank(self):
         with self.assertRaises(ValueError):
             DurakCard('0', 'H')
 
-    def test_numeric_value_is_index_in_values(self):
-        for index, value in enumerate(DurakCard.VALUES):
-            card = DurakCard(value, 'H')
-            self.assertEqual(card.numeric_value, index)
+    def test_numeric_rank_is_index_in_ranks(self):
+        for index, rank in enumerate(DurakCard.RANKS):
+            card = DurakCard(rank, 'H')
+            self.assertEqual(card.numeric_rank, index)
 
-    def test_value_is_value_from_new(self):
-        for value in DurakCard.VALUES:
-            card = DurakCard(value, 'H')
-            self.assertEqual(card.value, value)
+    def test_rank_is_rank_from_new(self):
+        for rank in DurakCard.RANKS:
+            card = DurakCard(rank, 'H')
+            self.assertEqual(card.rank, rank)
 
     def test_suit_is_suit_from_new(self):
         for suit in DurakCard.SUITS:
@@ -63,9 +63,9 @@ class DurakCardTest(unittest.TestCase):
 
     def test_all(self):
         expected = set()
-        for value in DurakCard.VALUES:
+        for rank in DurakCard.RANKS:
             for suit in DurakCard.SUITS:
-                expected.add(DurakCard(value, suit))
+                expected.add(DurakCard(rank, suit))
         self.assertEqual(DurakCard.all(), expected)
 
     def test_str(self):
@@ -104,7 +104,7 @@ class DurakCardTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             card == object()
 
-    def test_cards_of_same_suit_are_compared_by_value(self):
+    def test_cards_of_same_suit_are_compared_by_rank(self):
         card = DurakCard('T', 'H')
         self.assertTrue(card > DurakCard('6', 'H'))
         self.assertTrue(card < DurakCard('K', 'H'))
@@ -120,7 +120,7 @@ class DurakCardTest(unittest.TestCase):
 
         card = DurakCard('6', 'H')
         self.assertTrue((0, 'H') in DurakCard._INSTANCE_REGISTRY)
-        self.assertEqual(card.value, '6')
+        self.assertEqual(card.rank, '6')
         self.assertEqual(card.suit, 'H')
 
         # making sure it's really being retrieved from cache
@@ -135,7 +135,7 @@ class DurakCardTest(unittest.TestCase):
         card = DurakCard('7', 'S')
 
         with self.assertRaises(AttributeError):
-            card.value = '8'
+            card.rank = '8'
 
         with self.assertRaises(AttributeError):
             card.suit = 'D'
