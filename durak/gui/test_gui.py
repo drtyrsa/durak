@@ -2,7 +2,7 @@
 from collections import OrderedDict
 import unittest
 
-from mock import patch, Mock
+from unittest.mock import patch, Mock
 import wx
 
 from durak.utils.cards import DurakCard
@@ -12,9 +12,13 @@ from durak.gui.widgets import (CardButton, Card, HiddenCard, CardSizer,
                                ControlSizer, LabeledCardSizer)
 
 
+# wxPython allows only one wx.App per process; share it across all tests.
+_APP = wx.App(False)
+
+
 class CardImageManagerTest(unittest.TestCase):
     def setUp(self):
-        self._app = wx.PySimpleApp()
+        self._app = _APP
 
         self.cards_image_path = '1'
         self.cards_hidden_image_path = '2'
@@ -55,7 +59,7 @@ class CardImageManagerTest(unittest.TestCase):
                               .call_count),
                 len(all_cards)
             )
-            self.assertItemsEqual(
+            self.assertCountEqual(
                 self.manager._data.keys(),
                 list(all_cards) + [self.manager.HIDDEN]
             )
@@ -89,7 +93,7 @@ class CardImageManagerTest(unittest.TestCase):
 
 class CardButtonTest(unittest.TestCase):
     def setUp(self):
-        self._app = wx.PySimpleApp()
+        self._app = _APP
 
         self._image_manager_patcher = patch(
             'durak.gui.widgets.card_image_manager'
@@ -100,12 +104,12 @@ class CardButtonTest(unittest.TestCase):
         self._image_manager_patcher.stop()
 
     def test_card_getter(self):
-        with patch('__builtin__.super'):
+        with patch('builtins.super'):
             button = CardButton(parent=None, card=DurakCard('6H'))
             self.assertEqual(button.card, button._card)
 
     def test_card_setter(self):
-        with patch('__builtin__.super'):
+        with patch('builtins.super'):
             button = CardButton(parent=None, card=DurakCard('6H'))
             with patch.object(button, 'SetBitmapLabel') as method_mock:
                 button.card = DurakCard('7S')
@@ -119,7 +123,7 @@ class CardWidgetTest(unittest.TestCase):
     """Dummy test, just checks there no exceptions on __init__"""
 
     def setUp(self):
-        self._app = wx.PySimpleApp()
+        self._app = _APP
 
         self._image_manager_patcher = patch(
             'durak.gui.widgets.card_image_manager'
@@ -130,7 +134,7 @@ class CardWidgetTest(unittest.TestCase):
         self._image_manager_patcher.stop()
 
     def test_init(self):
-        with patch('__builtin__.super'):
+        with patch('builtins.super'):
             _ = Card(parent=None, card=DurakCard('6H'))
 
 
@@ -138,7 +142,7 @@ class HiddenWidgetTest(unittest.TestCase):
     """Dummy test, just checks there no exceptions on __init__"""
 
     def setUp(self):
-        self._app = wx.PySimpleApp()
+        self._app = _APP
 
         self._image_manager_patcher = patch(
             'durak.gui.widgets.card_image_manager'
@@ -149,13 +153,13 @@ class HiddenWidgetTest(unittest.TestCase):
         self._image_manager_patcher.stop()
 
     def test_init(self):
-        with patch('__builtin__.super'):
+        with patch('builtins.super'):
             _ = HiddenCard(parent=None)
 
 
 class CardSizerTest(unittest.TestCase):
     def setUp(self):
-        self._app = wx.PySimpleApp()
+        self._app = _APP
 
         self.parent = object()
         self.on_click = lambda e: e
@@ -292,7 +296,7 @@ class CardSizerTest(unittest.TestCase):
         with patch.object(self.sizer, 'Clear') as Clear_mock:
             with patch.object(self.sizer, 'Layout') as Layout_mock:
                 self.sizer.remove_all()
-                Clear_mock.assert_called_once_with(deleteWindows=True)
+                Clear_mock.assert_called_once_with(delete_windows=True)
                 self.assertEqual(self.sizer._buttons_dict, {})
                 self.assertFalse(Layout_mock.called)
 
@@ -308,7 +312,7 @@ class CardSizerTest(unittest.TestCase):
         }
 
         self.sizer.enable_all()
-        for button in self.sizer._buttons_dict.itervalues():
+        for button in self.sizer._buttons_dict.values():
             self.assertTrue(button.Enable.called)
 
     def test_disable_all(self):
@@ -317,7 +321,7 @@ class CardSizerTest(unittest.TestCase):
         }
 
         self.sizer.disable_all()
-        for button in self.sizer._buttons_dict.itervalues():
+        for button in self.sizer._buttons_dict.values():
             self.assertTrue(button.Disable.called)
 
     def test_set_enabled_cards_enables_certain_cards(self):
@@ -343,13 +347,15 @@ class CardSizerTest(unittest.TestCase):
 
 class LabeledCardSizerTest(unittest.TestCase):
     def setUp(self):
-        self._app = wx.PySimpleApp()
+        self._app = _APP
 
-        self.parent = object()
-        with patch('__builtin__.super'):
-            with patch('durak.gui.widgets.wx') as wx_mock:
-                self.staticbox = wx_mock.StaticBox.return_value
-                self.sizer = LabeledCardSizer(parent=self.parent)
+        self._frame = wx.Frame(None)
+        self.sizer = LabeledCardSizer(wx.HORIZONTAL, parent=self._frame)
+        self.staticbox = Mock()
+        self.sizer._staticbox = self.staticbox
+
+    def tearDown(self):
+        self._frame.Destroy()
 
     def test_set_label(self):
         some_label = 'SOME_LABEL'
@@ -360,7 +366,7 @@ class LabeledCardSizerTest(unittest.TestCase):
 
 class EnemyCardSizerTest(unittest.TestCase):
     def setUp(self):
-        self._app = wx.PySimpleApp()
+        self._app = _APP
 
         self.parent = object()
         self.sizer = EnemyCardSizer(parent=self.parent)
@@ -409,9 +415,13 @@ class EnemyCardSizerTest(unittest.TestCase):
 
 class TablePanelTest(unittest.TestCase):
     def setUp(self):
-        self._app = wx.PySimpleApp()
+        self._app = _APP
 
-        self.panel = TablePanel(parent=None)
+        self._frame = wx.Frame(None)
+        self.panel = TablePanel(parent=self._frame)
+
+    def tearDown(self):
+        self._frame.Destroy()
 
     def test_add_card_creates_card_and_adds_it(self):
         card = DurakCard('6H')
@@ -516,15 +526,15 @@ class TablePanelTest(unittest.TestCase):
         self.panel._given_more = [DurakCard('7H')]
 
         self.assertEqual(self.panel.pop(), DurakCard('7H'))
-        self.assertItemsEqual(self.panel._cards.keys(), [DurakCard('6H')])
+        self.assertCountEqual(self.panel._cards.keys(), [DurakCard('6H')])
         card_mock.Destroy.assert_called()
 
 
 class DeckPanelTest(unittest.TestCase):
     def setUp(self):
-        self._app = wx.PySimpleApp()
+        self._app = _APP
 
-        with patch('__builtin__.super'):
+        with patch('builtins.super'):
             with patch.object(DeckPanel, '_create_widgets'):
                 with patch.object(DeckPanel, 'SetSizeHints'):
                     self.panel = DeckPanel(parent=None)
@@ -602,10 +612,10 @@ class DeckPanelTest(unittest.TestCase):
 
 class ControlSizerTest(unittest.TestCase):
     def setUp(self):
-        self._app = wx.PySimpleApp()
+        self._app = _APP
         self.parent = Mock()
 
-        with patch('__builtin__.super'):
+        with patch('builtins.super'):
             with patch('durak.gui.widgets.wx') as self.wx_patch_mock:
                 with patch.object(ControlSizer, 'AddMany') as self.AddManyMock:
                     self.sizer = ControlSizer(parent=self.parent)
@@ -662,7 +672,7 @@ class ControlSizerTest(unittest.TestCase):
             self.sizer.ENOUGH: self.sizer._enough_button,
         }
 
-        for button_name, button in buttons_map.iteritems():
+        for button_name, button in buttons_map.items():
             with patch.object(ControlSizer, 'Layout') as LayoutMock:
                 self.sizer.show_button(button_name)
                 self.assertTrue(button.Show.called)

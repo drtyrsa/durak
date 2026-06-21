@@ -17,7 +17,8 @@ class EngineWrapper(object):
 
     def __init__(self, engine_path):
         self._process = subprocess.Popen(
-            engine_path, stdin=subprocess.PIPE, stdout=subprocess.PIPE
+            engine_path, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+            text=True
         )
 
     def init(self, trump):
@@ -73,7 +74,7 @@ class EngineWrapper(object):
             return None
 
         try:
-            cards = map(DurakCard, output.split())
+            cards = list(map(DurakCard, output.split()))
         except ValueError:
             raise EngineWrapperException(
                 'Can not convert this result of Give_more to cards: %s' %
@@ -91,6 +92,7 @@ class EngineWrapper(object):
     def _write(self, line):
         logger.debug('sending: (' + str(id(self)) + '): %s' % line)
         self._process.stdin.write(line.strip() + '\n')
+        self._process.stdin.flush()
 
     def _write_command(self, command, cards, gamedata=None):
         line = command + ' ' + ' '.join(map(str, cards))

@@ -122,8 +122,8 @@ class GameController(object):
             'trump': str(DurakCard(self._trump)),
             'deck_count': self.deck_count,
             'enemy_count': len(self._get_enemy_of(player).cards),
-            'on_table': map(str, self._on_table),
-            'discarded': map(str, self._discarded),
+            'on_table': list(map(str, self._on_table)),
+            'discarded': list(map(str, self._discarded)),
         }
 
     def get_game_data_for(self, player):

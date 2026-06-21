@@ -6,7 +6,7 @@ from durak.gui.frames import ViewLogFrame
 
 
 def main():
-    app = wx.PySimpleApp()
+    app = wx.App(False)
     frame = ViewLogFrame()
     frame.Show()
     app.MainLoop()

@@ -3,7 +3,7 @@ import json
 import os
 import unittest
 
-from mock import mock_open, patch
+from unittest.mock import mock_open, patch
 
 from durak.consts import HOME_DIR
 from durak.utils import get_filename, get_setting, set_setting
@@ -154,7 +154,7 @@ class CardSetTest(unittest.TestCase):
         ]
         card_set = CardSet(cards, self.trump)
         self.assertEqual(card_set._trump, self.trump)
-        self.assertItemsEqual(card_set, {
+        self.assertCountEqual(card_set, {
             DurakCard('7S'), DurakCard('TD'), DurakCard('KC')
         })
 
@@ -316,7 +316,7 @@ class GetSettingFunctionTest(unittest.TestCase):
             {self.SETTING_NAME: self.VALUE}
         ))
         self._open_patcher = patch(
-            '__builtin__.open', self.open_mock, create=True
+            'builtins.open', self.open_mock, create=True
         )
         self._open_patcher.start()
 
@@ -358,7 +358,7 @@ class SetSettingFunctionTest(unittest.TestCase):
             {self.SETTING_NAME: 'old_value', 'some': 'other'}
         ))
         self._open_patcher = patch(
-            '__builtin__.open', self.open_mock, create=True
+            'builtins.open', self.open_mock, create=True
         )
         self._open_patcher.start()
 

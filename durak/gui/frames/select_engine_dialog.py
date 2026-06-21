@@ -51,7 +51,7 @@ class SelectEngineDialog(wx.Dialog):
         self._buttons_sizer = wx.BoxSizer(wx.HORIZONTAL)
         self._buttons_sizer.AddMany((self._remove_button, self._add_button))
 
-        self._main_sizer = wx.FlexGridSizer(cols=1, rows=4)
+        self._main_sizer = wx.FlexGridSizer(4, 1, 0, 0)
         self._main_sizer.AddGrowableCol(0)
         self._main_sizer.AddGrowableRow(1)
         self._main_sizer.Add(self._info_text, flag=wx.ALIGN_LEFT)

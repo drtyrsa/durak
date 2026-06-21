@@ -125,9 +125,9 @@ def _do_autoplay(engine1_path, engine2_path, matches_number, match_size,
     sys.stdout.write(
         'Playing %d matches, %d games each\n' % (matches_number, match_size)
     )
-    for _ in xrange(matches_number):
+    for _ in range(matches_number):
         match = Counter()
-        for __ in xrange(match_size):
+        for __ in range(match_size):
             sys.stdout.write('\r%d of %d' % (game_counter, total_games))
             sys.stdout.flush()
 

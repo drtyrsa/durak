@@ -80,7 +80,7 @@ class CardSizerMixin(object):
 
     @property
     def cards(self):
-        return CardSet(self._buttons_dict.iterkeys(), self._trump)
+        return CardSet(self._buttons_dict.keys(), self._trump)
 
     @property
     def trump(self):
@@ -99,22 +99,22 @@ class CardSizerMixin(object):
             self.Layout()
 
     def remove_all(self, do_layout=False):
-        self.Clear(deleteWindows=True)
+        self.Clear(delete_windows=True)
         self._buttons_dict = {}
 
         if do_layout:
             self.Layout()
 
     def enable_all(self):
-        for card_button in self._buttons_dict.itervalues():
+        for card_button in self._buttons_dict.values():
             card_button.Enable()
 
     def disable_all(self):
-        for card_button in self._buttons_dict.itervalues():
+        for card_button in self._buttons_dict.values():
             card_button.Disable()
 
     def set_enabled_cards(self, cards):
-        for card, card_button in self._buttons_dict.iteritems():
+        for card, card_button in self._buttons_dict.items():
             if card in cards:
                 card_button.Enable()
             else:
@@ -152,7 +152,7 @@ class EnemyCardSizer(wx.BoxSizer):
             return
 
         elif count < self.count:
-            for _ in xrange(count, self.count):
+            for _ in range(count, self.count):
                 card = self._cards.pop()
                 self.Detach(card)
                 card.Destroy()
@@ -160,7 +160,7 @@ class EnemyCardSizer(wx.BoxSizer):
         elif count > self.count:
             cards = [
                 HiddenCard(parent=self._parent)
-                for _ in xrange(self.count, count)
+                for _ in range(self.count, count)
             ]
             self.AddMany((card, 0, wx.ALL, self.BORDER_SIZE) for card in cards)
             self._cards.extend(cards)
@@ -215,7 +215,7 @@ class TablePanel(wx.Panel):
         assert not self._given_more
         assert self._is_odd
 
-        last_card_img = self._cards.values()[-1]
+        last_card_img = list(self._cards.values())[-1]
         position = (
             last_card_img.GetPosition() +
             wx.Point(self.UPPER_CARD_X_OFFSET, -self.UPPER_CARD_Y_OFFSET)
@@ -225,7 +225,7 @@ class TablePanel(wx.Panel):
     def give_more(self, card):
         assert self._given_more or self._is_odd
 
-        last_card_img = self._cards.values()[-1]
+        last_card_img = list(self._cards.values())[-1]
         x = last_card_img.GetPosition()[0] + self.GIVEN_MORE_OFFSET
         position = (x, self.UPPER_CARD_Y_OFFSET)
 
@@ -233,7 +233,7 @@ class TablePanel(wx.Panel):
         self._given_more.append(card)
 
     def remove_all(self):
-        for card in self._cards.itervalues():
+        for card in self._cards.values():
             card.Destroy()
 
         self._cards = OrderedDict()
@@ -255,7 +255,7 @@ class TablePanel(wx.Panel):
 
     @property
     def cards(self):
-        return self._cards.keys()
+        return list(self._cards.keys())
 
     @property
     def _is_odd(self):

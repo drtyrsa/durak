@@ -91,27 +91,42 @@ class DurakCard(DurakCardTuple):
         return '%s%s' % (self.rank, self.suit)
 
     __repr__ = __str__
-    __unicode__ = __str__
 
     def __hash__(self):
         return hash(str(self))
 
-    def __cmp__(self, other):
+    # Python 2 used a single __cmp__; Python 3 needs the rich comparison
+    # operators. Ordering follows the underlying tuple (numeric_rank, suit) —
+    # exactly what __cmp__ used to return — and comparing against anything that
+    # is not a DurakCard raises, just like before.
+    def _assert_comparable(self, other):
         if not isinstance(other, type(self)):
             raise ValueError(
                 u'Can not compare DurakCard and %s instances' % type(other)
             )
 
-        rank_diff = self.numeric_rank - other.numeric_rank
-        if rank_diff != 0:
-            return rank_diff
+    def __eq__(self, other):
+        self._assert_comparable(other)
+        return tuple(self) == tuple(other)
 
-        if self.suit == other.suit:
-            return 0
-        elif self.suit > other.suit:
-            return 1
-        else:
-            return -1
+    def __ne__(self, other):
+        return not self.__eq__(other)
+
+    def __lt__(self, other):
+        self._assert_comparable(other)
+        return tuple(self) < tuple(other)
+
+    def __le__(self, other):
+        self._assert_comparable(other)
+        return tuple(self) <= tuple(other)
+
+    def __gt__(self, other):
+        self._assert_comparable(other)
+        return tuple(self) > tuple(other)
+
+    def __ge__(self, other):
+        self._assert_comparable(other)
+        return tuple(self) >= tuple(other)
 
 
 class CardSet(set):
