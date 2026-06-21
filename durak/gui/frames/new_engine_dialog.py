@@ -71,7 +71,7 @@ class NewEngineDialog(wx.Dialog):
 
     def _on_open(self, event):
         dialog = wx.FileDialog(
-            self, u'Выберите файл движка', '', '', '*', wx.OPEN
+            self, u'Выберите файл движка', '', '', '*', wx.FD_OPEN
         )
         if dialog.ShowModal() != wx.ID_OK:
             return

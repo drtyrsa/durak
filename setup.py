@@ -14,7 +14,7 @@ setup(
     classifiers=[
         'Development Status :: 3 - Alpha',
         'License :: OSI Approved :: MIT License',
-        'Programming Language :: Python :: 2.7',
+        'Programming Language :: Python :: 3',
         'Topic :: Games/Entertainment :: Board Games',
     ],
     description='Durak card game',
@@ -34,8 +34,8 @@ setup(
     },
     install_requires=[
         'docopt',
+        'wxPython',
     ],
-    test_suite='nose.collector',
-    tests_require=['nose', 'mock'],
+    tests_require=['pytest'],
     zip_safe=False
 )

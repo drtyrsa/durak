@@ -160,7 +160,7 @@ class LogViewer(object):
         for key in ('player1_cards', 'player2_cards'):
             result[key] = self._to_card_set(result[key])
         for key in ('moves_and_responds', 'given_more'):
-            result[key] = map(DurakCard, result[key])
+            result[key] = list(map(DurakCard, result[key]))
 
         return result
 

@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 import unittest
 
-from mock import patch
+from unittest.mock import patch
 
 from durak.utils.cards import DurakCard
 from durak.engine.base import BaseEngine
@@ -110,7 +110,8 @@ class EngineWrapperTest(unittest.TestCase):
         self.subprocess_mock.Popen.assert_called_with(
             'path_to_engine',
             stdin=self.subprocess_mock.PIPE,
-            stdout=self.subprocess_mock.PIPE
+            stdout=self.subprocess_mock.PIPE,
+            text=True
         )
 
     def test_write_outputs_stripped_line_plus_break(self):
@@ -230,7 +231,7 @@ class EngineWrapperTest(unittest.TestCase):
 
         results = self.wrapper.give_more([DurakCard('7H')])
 
-        self.assertItemsEqual(results, [DurakCard('8H'), DurakCard('9H')])
+        self.assertCountEqual(results, [DurakCard('8H'), DurakCard('9H')])
         self.process.stdin.write.assert_called_once_with('give_more 7H\n')
         self.assertTrue(self.process.stdout.readline.called)
 

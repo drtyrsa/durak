@@ -53,7 +53,7 @@ class PlayFrame(wx.Frame):
             on_click=self._on_bottom_player_card_click
         )
 
-        self._table_sizer = wx.FlexGridSizer(cols=2, rows=1)
+        self._table_sizer = wx.FlexGridSizer(1, 2, 0, 0)
         self._table_sizer.AddGrowableCol(0)
 
         self._table = TablePanel(parent=self._panel)
@@ -73,7 +73,7 @@ class PlayFrame(wx.Frame):
             self._on_take_button_click
         )
 
-        self._main_sizer = wx.FlexGridSizer(cols=1, rows=4)
+        self._main_sizer = wx.FlexGridSizer(4, 1, 0, 0)
         self._main_sizer.AddGrowableCol(0)
         self._main_sizer.AddGrowableRow(1)
         self._main_sizer.Add(

@@ -1,10 +1,10 @@
 # -*- coding: utf-8 -*-
-from cStringIO import StringIO
+from io import StringIO
 from datetime import datetime, timedelta
 import json
 import unittest
 
-from mock import MagicMock, mock_open, patch
+from unittest.mock import MagicMock, mock_open, patch
 
 from durak.gamelogger import GameLogger, LogViewer
 from durak.gamelogger.log_viewer import InvalidLogFormat
@@ -31,14 +31,14 @@ class GameLoggerTest(unittest.TestCase):
         self.logger.log_before_game(
             'name1', 'name2', [DurakCard('6H')], DurakCard('7H')
         )
-        self.assertDictContainsSubset(
-            {
-                'player1_name': 'name1',
-                'player2_name': 'name2',
-                'deck': ['6H'],
-                'opened_trump': '7H',
-            },
-            self.logger._log
+        _subset = {
+            'player1_name': 'name1',
+            'player2_name': 'name2',
+            'deck': ['6H'],
+            'opened_trump': '7H',
+        }
+        self.assertEqual(
+            {k: self.logger._log[k] for k in _subset}, _subset
         )
         self.assertAlmostNow(self.logger._log['started_at'])
 
@@ -99,7 +99,7 @@ class GameLoggerTest(unittest.TestCase):
         self.logger.log_after_game(self.logger.PLAYER2)
 
         open_mock = mock_open()
-        with patch('__builtin__.open', open_mock, create=True):
+        with patch('builtins.open', open_mock, create=True):
             self.logger.write_to_file(filename)
 
             open_mock.assert_called_once_with(filename, 'a')
@@ -118,7 +118,7 @@ class GameLoggerTest(unittest.TestCase):
         self.logger.log_after_game(self.logger.PLAYER2)
 
         open_mock = mock_open()
-        with patch('__builtin__.open', open_mock, create=True):
+        with patch('builtins.open', open_mock, create=True):
             self.logger.write_to_file(filename, overwrite=True)
 
             open_mock.assert_called_once_with(filename, 'w')
@@ -146,7 +146,7 @@ class LogViewerTest(unittest.TestCase):
         self.open_mock = MagicMock(spec=open)
         self._set_file_contents(self.LOG_FILE_CONTENTS)
         self.open_patcher = patch(
-            '__builtin__.open', self.open_mock, create=True
+            'builtins.open', self.open_mock, create=True
         )
         self.open_patcher.start()
 
@@ -187,7 +187,7 @@ class LogViewerTest(unittest.TestCase):
             self.log_viewer._fill_game_index()
 
     def test_iterindex_returns_iterator_over_game_index(self):
-        self.assertItemsEqual(
+        self.assertCountEqual(
             self.log_viewer.iterindex(), iter(self.log_viewer._game_index)
         )
 
@@ -222,7 +222,7 @@ class LogViewerTest(unittest.TestCase):
 
         move = self.game0['moves'][0]
         result = self.log_viewer._get_new_move(move)
-        self.assertItemsEqual(result.keys(), move.keys() + ['event_type'])
+        self.assertCountEqual(result.keys(), list(move.keys()) + ['event_type'])
         self.assertEqual(result['event_type'], self.log_viewer.NEW_MOVE)
 
     def test_opened_trump_property(self):
@@ -297,7 +297,7 @@ class LogViewerTest(unittest.TestCase):
 
         result = self.log_viewer._to_card_set(cards)
         self.assertTrue(isinstance(result, CardSet))
-        self.assertItemsEqual(result, map(DurakCard, cards))
+        self.assertCountEqual(result, map(DurakCard, cards))
         self.assertEqual(result._trump, DurakCard(self.game0['opened_trump']))
 
     def test_has_next(self):

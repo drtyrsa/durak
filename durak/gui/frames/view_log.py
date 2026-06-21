@@ -39,7 +39,7 @@ class ViewLogFrame(wx.Frame):
             parent=self._panel,
         )
 
-        self._table_sizer = wx.FlexGridSizer(cols=2, rows=1)
+        self._table_sizer = wx.FlexGridSizer(1, 2, 0, 0)
         self._table_sizer.AddGrowableCol(0)
 
         self._table = TablePanel(parent=self._panel)
@@ -66,7 +66,7 @@ class ViewLogFrame(wx.Frame):
             self._to_game_end_button
         ])
 
-        self._main_sizer = wx.FlexGridSizer(cols=1, rows=4)
+        self._main_sizer = wx.FlexGridSizer(4, 1, 0, 0)
         self._main_sizer.AddGrowableCol(0)
         self._main_sizer.AddGrowableRow(1)
         self._main_sizer.Add(
@@ -154,7 +154,7 @@ class ViewLogFrame(wx.Frame):
             self.LAST_DIR_SETTING, os.path.expanduser('~')
         )
         dialog = wx.FileDialog(
-            self, u'Выберите файл лога', last_directory, '', '*', wx.OPEN
+            self, u'Выберите файл лога', last_directory, '', '*', wx.FD_OPEN
         )
         if dialog.ShowModal() != wx.ID_OK:
             self.Close()

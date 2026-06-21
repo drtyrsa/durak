@@ -6,7 +6,7 @@ from durak.gui.frames import PlayFrame
 
 
 def main():
-    app = wx.PySimpleApp()
+    app = wx.App(False)
     frame = PlayFrame()
     frame.Show()
     app.MainLoop()

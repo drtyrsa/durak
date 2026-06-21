@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 import unittest
 
-from mock import patch
+from unittest.mock import patch
 
 from durak.utils.cards import DurakCard, CardSet
 from durak.controller import Table, GameController
@@ -30,7 +30,7 @@ class TableTest(unittest.TestCase):
         given_more_cards = {DurakCard('AS'), DurakCard('6S')}
 
         table.extend(cards)
-        self.assertItemsEqual(table, cards)
+        self.assertCountEqual(table, cards)
         table.give_more(given_more_cards)
         self.assertEqual(table.given_more, given_more_cards)
 
@@ -156,8 +156,8 @@ class GameControllerTest(unittest.TestCase):
                 'trump': str(controller._trump),
                 'deck_count': len(controller._deck),
                 'enemy_count': len(controller._player2.cards),
-                'on_table': map(str, controller._on_table),
-                'discarded': map(str, controller._discarded),
+                'on_table': list(map(str, controller._on_table)),
+                'discarded': list(map(str, controller._discarded)),
             }
         )
         self.assertDictEqual(
@@ -165,8 +165,8 @@ class GameControllerTest(unittest.TestCase):
                 'trump': str(controller._trump),
                 'deck_count': len(controller._deck),
                 'enemy_count': len(controller._player1.cards),
-                'on_table': map(str, controller._on_table),
-                'discarded': map(str, controller._discarded),
+                'on_table': list(map(str, controller._on_table)),
+                'discarded': list(map(str, controller._discarded)),
             }
         )
 
@@ -210,7 +210,7 @@ class GameControllerTest(unittest.TestCase):
         all_cards.extend(controller._deck)
         all_cards.extend(controller._player1.cards)
         all_cards.extend(controller._player2.cards)
-        self.assertItemsEqual(all_cards, DurakCard.all())
+        self.assertCountEqual(all_cards, DurakCard.all())
 
     def test_start_new_game_cards_are_shuffled(self):
         controller = GameController()
@@ -399,7 +399,7 @@ class GameControllerTest(unittest.TestCase):
 
         controller.register_move(DurakCard('AC'))
 
-        self.assertItemsEqual(controller._player1.cards, (DurakCard('7H'),))
+        self.assertCountEqual(controller._player1.cards, (DurakCard('7H'),))
         self.assertEqual(
             controller._on_table,
             [DurakCard('AD'), DurakCard('AS'), DurakCard('AC')]
@@ -477,7 +477,7 @@ class GameControllerTest(unittest.TestCase):
 
         controller.register_response(DurakCard('AH'))
 
-        self.assertItemsEqual(controller._player1.cards, [DurakCard('AC')])
+        self.assertCountEqual(controller._player1.cards, [DurakCard('AC')])
         self.assertEqual(
             controller._on_table, [DurakCard('6D'), DurakCard('AH')]
         )
@@ -637,9 +637,9 @@ class GameControllerTest(unittest.TestCase):
 
         controller.register_give_more([DurakCard('6S'), DurakCard('6H')])
 
-        self.assertItemsEqual(controller._player1.cards, [DurakCard('AC')])
+        self.assertCountEqual(controller._player1.cards, [DurakCard('AC')])
         self.assertSequenceEqual(controller._on_table, [DurakCard('6D')])
-        self.assertItemsEqual(
+        self.assertCountEqual(
             controller._on_table.given_more, [DurakCard('6S'), DurakCard('6H')]
         )
         self.assertEqual(controller._state, controller.States.DEALING)
@@ -668,7 +668,7 @@ class GameControllerTest(unittest.TestCase):
         controller.deal()
 
         self.assertSequenceEqual(controller._on_table, [])
-        self.assertItemsEqual(controller._on_table.given_more, set())
+        self.assertCountEqual(controller._on_table.given_more, set())
 
     def test_deal_with_no_response(self):
         controller = GameController()
@@ -686,7 +686,7 @@ class GameControllerTest(unittest.TestCase):
 
         controller.deal()
 
-        self.assertItemsEqual(
+        self.assertCountEqual(
             controller._player2.cards,
             {
                 DurakCard('6S'),
@@ -746,7 +746,7 @@ class GameControllerTest(unittest.TestCase):
 
         return_value = controller.deal()
 
-        self.assertItemsEqual(
+        self.assertCountEqual(
             controller._player1.cards, [
                 DurakCard('6S'),
                 DurakCard('6H'),
@@ -756,7 +756,7 @@ class GameControllerTest(unittest.TestCase):
                 DurakCard('KH'),
             ]
         )
-        self.assertItemsEqual(
+        self.assertCountEqual(
             controller._player2.cards, [
                 DurakCard('7S'),
                 DurakCard('7H'),
@@ -807,7 +807,7 @@ class GameControllerTest(unittest.TestCase):
 
         controller.deal()
 
-        self.assertItemsEqual(
+        self.assertCountEqual(
             controller._player1.cards, {
                 DurakCard('6S'),
                 DurakCard('6H'),

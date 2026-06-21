@@ -17,7 +17,7 @@ class GameLogger(object):
     def log_before_game(self, player1_name, player2_name, deck, opened_trump):
         self._log['player1_name'] = player1_name
         self._log['player2_name'] = player2_name
-        self._log['deck'] = map(str, deck)
+        self._log['deck'] = list(map(str, deck))
         self._log['opened_trump'] = str(opened_trump)
         self._log['started_at'] = datetime.now().isoformat()
 
@@ -31,16 +31,16 @@ class GameLogger(object):
         assert deck_count >= 0
 
         move = {}
-        move['player1_cards'] = map(str, player1_cards)
-        move['player2_cards'] = map(str, player2_cards)
+        move['player1_cards'] = list(map(str, player1_cards))
+        move['player2_cards'] = list(map(str, player2_cards))
         move['to_move'] = to_move
         move['deck_count'] = deck_count
         self._log['moves'].append(move)
 
     def log_after_move(self, moves_and_responds, given_more):
         move = self._log['moves'][-1]
-        move['moves_and_responds'] = map(str, moves_and_responds)
-        move['given_more'] = map(str, given_more)
+        move['moves_and_responds'] = list(map(str, moves_and_responds))
+        move['given_more'] = list(map(str, given_more))
 
     @classmethod
     def _get_result(cls, winner):
