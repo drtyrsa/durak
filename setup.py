@@ -25,13 +25,14 @@ setup(
     author_email='drtyrsa@yandex.ru',
     license='MIT',
     packages=find_packages(),
-    package_data={'durak': ['assets/*.gif']},
+    package_data={'durak': ['assets/*.gif'], 'durak.web': ['static/*']},
     entry_points={
         'console_scripts': [
             'durak-autoplay=durak.autoplay:main',
             'durak-dummy=durak.engine.dummy:main',
             'durak-nextgen=durak.engine.nextgen:main',
             'durak-play=durak.play:main',
+            'durak-web=durak.web.server:main',
             'durak-gui=durak.gui.play_app:main',
             'durak-logviewer=durak.gui.view_log_app:main',
         ],

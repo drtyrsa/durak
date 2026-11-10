@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f5f2ea">
+  <title>Durak</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/style.css">
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <svg class="icon-definitions" aria-hidden="true"><defs>
+    <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+    <symbol id="i-close" viewBox="0 0 24 24"><path d="m6 6 12 12M6 18 18 6"/></symbol>
+    <symbol id="i-help" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9.5 9a2.5 2.5 0 0 1 5 0c0 2-2.5 2-2.5 4m0 3h.01"/></symbol>
+  </defs></svg>
+  <main class="app">
+    <div class="game-layout">
+      <section class="game-room" aria-label="Durak game table">
+        <div class="room-topline"><span id="game-label">Game 1</span><nav class="game-controls" aria-label="Game controls"><button class="button quiet rules-trigger"><svg class="icon" aria-hidden="true"><use href="#i-help"/></svg>Rules</button><button class="button primary new-trigger"><svg class="icon" aria-hidden="true"><use href="#i-plus"/></svg>New deal</button></nav></div>
+        <div class="opponent-label"><span class="avatar" id="opponent-avatar">N</span><div><strong id="opponent-name">NextGen</strong><span id="opponent-count">Loading…</span></div><span class="thinking-dots" id="thinking-dots" aria-hidden="true"><i></i><i></i><i></i></span></div>
+        <div class="opponent-hand" id="opponent-hand" aria-label="Opponent's hidden hand"></div>
+
+        <div class="felt-wrap">
+          <div class="felt"><div class="felt-border"></div>
+            <div class="table-cards" id="table-cards" aria-label="Cards on the table"></div>
+            <div class="deck-area" aria-label="Draw pile"><div id="deck-cards"></div><span id="deck-label">24 in the deck</span></div>
+          </div>
+        </div>
+
+        <div class="turn-panel" aria-live="polite" aria-atomic="true"><span class="turn-dot" id="turn-dot"></span><div><h2 id="turn-title">Loading…</h2><p id="turn-hint"></p></div><div id="turn-actions" class="turn-actions"></div></div>
+        <div class="hand-viewport"><div class="your-hand" id="your-hand" aria-label="Your cards"></div></div>
+        <div class="hand-caption"><span><span class="you-dot"></span>Your hand <b id="hand-count"></b></span><span id="hand-guide">Click a highlighted card to play</span></div>
+      </section>
+
+      <aside class="side-panel" aria-label="Game information">
+        <section class="opponent-info"><label class="eyebrow" for="engine-select">Opponent</label><select id="engine-select" title="Changing the opponent starts a new game" disabled><option>Loading…</option></select></section>
+        <section class="trump-info"><div><p class="eyebrow">Trump</p><h2 id="trump-name">—</h2></div><span class="trump-symbol" id="trump-symbol">♠</span></section>
+        <div class="card-counters"><div><strong id="deck-count">24</strong><span>Deck</span></div><div><strong id="discard-count">0</strong><span>Discarded</span></div></div>
+        <section class="score-info"><div class="section-heading"><p class="eyebrow">Score</p><span id="games-count">0 games</span></div><div class="scoreline"><div><strong id="score-you">0</strong><span>You</span></div><span class="score-divider">:</span><div><strong id="score-opponent">0</strong><span id="score-name">NextGen</span></div><div class="draw-score"><strong id="score-draw">0</strong><span>Draws</span></div></div></section>
+        <section class="activity-info"><p class="eyebrow">Recent moves</p><ol id="activity" aria-label="Recent moves"></ol></section>
+      </aside>
+    </div>
+  </main>
+
+  <div id="toast" role="alert" hidden></div>
+  <dialog id="rules-dialog" aria-labelledby="rules-title"><button class="dialog-close" aria-label="Close dialog"><svg class="icon"><use href="#i-close"/></svg></button><h2 id="rules-title">Rules</h2><p class="dialog-copy">The last player holding cards loses.</p><ol class="rules-list"><li><b>Attack</b><span>Lead with any card. Add cards matching a rank already on the table.</span></li><li><b>Defend</b><span>Beat each card with a higher card of the same suit, or a trump. Only a higher trump beats a trump.</span></li><li><b>End the round</b><span>After a successful defence, choose End attack. The defender attacks next. If they take, select any throw-ins and choose Done; you attack again.</span></li><li><b>Finish the game</b><span>Hands refill to six while cards remain in the deck. Once it’s empty, get rid of yours. Both players finishing on the last attack and defence is a draw.</span></li></ol><div class="rule-tip">Highlighted cards are legal to play. Gold diamonds mark trumps.</div><button class="button primary wide dialog-dismiss">Close</button></dialog>
+
+  <dialog id="result-dialog" aria-labelledby="result-title"><button class="dialog-close" aria-label="Close dialog"><svg class="icon"><use href="#i-close"/></svg></button><h2 id="result-title">Game over</h2><button class="button primary wide" id="play-again">New deal</button><button class="text-button dialog-dismiss result-review">Review table</button></dialog>
+  <noscript>This game needs JavaScript enabled in your browser.</noscript>
+</body>
+</html>
