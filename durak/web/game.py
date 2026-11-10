@@ -4,6 +4,7 @@ from pathlib import Path
 from durak.controller import GameController
 from durak.engine.dummy import DummyEngine
 from durak.engine.nextgen import NextGenEngine
+from durak.gamelogger.logger import new_log_filename
 from durak.engine.wrapper import EngineWrapper
 from durak.utils.cards import CardSet, DurakCard
 
@@ -13,9 +14,11 @@ class StalePosition(ValueError):
 
 
 class BrowserGame:
-    def __init__(self, engine='nextgen'):
+    def __init__(self, engine='nextgen', log_dir=None):
+        self.log_dir = log_dir
+        self.log_filename = None
         self.engines = {
-            'nextgen': ('NextGen', 'Exact endgame solver.', NextGenEngine),
+            'nextgen': ('NextGen', 'Strategic play and exact endgames.', NextGenEngine),
             'dummy': ('Dummy', 'Simple strategy.', DummyEngine),
         }
         self.default_engine = engine
@@ -35,7 +38,9 @@ class BrowserGame:
         self.scores = {'you': 0, 'opponent': 0, 'draw': 0}
         self.error = None
 
-    def close(self):
+    def close(self, reason='closed'):
+        if self.engine is not None and self.started and not self.controller.is_game_over():
+            self.controller.save_log(reason=reason)
         engine, self.engine = self.engine, None
         if isinstance(engine, EngineWrapper):
             engine.game_end()
@@ -44,19 +49,26 @@ class BrowserGame:
         engine_id = self.engine_id if engine_id is None else engine_id
         if engine_id not in self.engines:
             raise ValueError('Choose an available engine.')
-        self.close()
+        self.close(reason='new_deal')
         self.started = False
         self.error = None
         self.engine_id = engine_id
-        self.engine = self.engines[engine_id][2]()
         try:
+            self.log_filename = new_log_filename(self.log_dir) if self.log_dir is not None else None
+            self.controller._log_filename = self.log_filename
+            self.controller._overwrite_log = True
+            self.controller._logger_enabled = self.log_filename is not None
+            self.controller._player2.name = self.engines[engine_id][0]
+            self.engine = self.engines[engine_id][2]()
+            if isinstance(self.engine, NextGenEngine):
+                self.engine.explain_decisions = self.log_filename is not None
             data = self.controller.start_new_game(ignore_winner=False)
             self.trump = data['trump']
             self.hand = CardSet(data['player1_cards'], self.trump)
             self.engine.init(self.trump)
             self.engine.deal(data['player2_cards'], self.controller.get_game_data_for('player2'))
         except Exception:
-            self.close()
+            self.close(reason='initialization_error')
             raise
         self.started = True
         self.game_number += 1
@@ -67,6 +79,8 @@ class BrowserGame:
         self._record('New deal. ' + ('You start.' if self.controller.is_player1_to_move()
                                     else self.engines[engine_id][0] + ' starts.'))
         self.revision += 1
+        if self.log_filename is not None:
+            print('Game log: {}'.format(self.log_filename), flush=True)
         return self.snapshot()
 
     @property
@@ -88,33 +102,34 @@ class BrowserGame:
 
     def _register(self, action, cards, human):
         controller = self.controller
+        analysis = None if human else getattr(self.engine, 'last_decision', None)
         actor = 'You' if human else self.engines[self.engine_id][0]
         if action == 'play':
             if len(cards) != 1:
                 raise ValueError('Choose one card.')
             if controller.state == controller.States.MOVING:
-                controller.register_move(cards[0])
+                controller.register_move(cards[0], analysis=analysis)
                 self._record(actor + (' attack.' if human else ' attacks.'), cards)
             elif controller.state == controller.States.RESPONDING:
-                controller.register_response(cards[0])
+                controller.register_response(cards[0], analysis=analysis)
                 self._record(actor + (' defend.' if human else ' defends.'), cards)
             else:
                 raise ValueError('Select your throw-ins, then choose Done.')
         elif action == 'take' and controller.state == controller.States.RESPONDING:
             if cards:
                 raise ValueError('Taking does not play a card.')
-            controller.register_response(None)
+            controller.register_response(None, analysis=analysis)
             self.taking = True
             self._record(actor + (' take the cards.' if human else ' takes the cards.'))
         elif action == 'finish' and controller.state == controller.States.MOVING:
             if cards:
                 raise ValueError('Ending an attack does not play a card.')
-            controller.register_move(None)
+            controller.register_move(None, analysis=analysis)
             self._record(actor + (' end the attack.' if human else ' ends the attack.'))
         elif action == 'throw' and controller.state == controller.States.GIVING_MORE:
             if len(set(cards)) != len(cards):
                 raise ValueError('A card can only be thrown once.')
-            controller.register_give_more(cards)
+            controller.register_give_more(cards, analysis=analysis)
             self.given_more = cards[:]
             self._record(actor + ((' throw in.' if human else ' throws in.') if cards
                                   else (' finish the attack.' if human else ' finishes the attack.')), cards)
@@ -182,7 +197,7 @@ class BrowserGame:
     def fail(self, error):
         self.error = 'The engine stopped: ' + str(error)
         self.revision += 1
-        self.close()
+        self.close(reason='engine_error')
 
     def snapshot(self):
         base = {'revision': self.revision, 'started': self.started, 'engine': self.engine_id,

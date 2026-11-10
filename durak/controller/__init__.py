@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 from random import SystemRandom
+import warnings
 
 from durak.controller import exceptions as exes
 from durak.gamelogger import GameLogger
@@ -54,8 +55,10 @@ class GameController(object):
         self._overwrite_log = overwrite_log
         self._logger = GameLogger()
         self._logger_enabled = True
+        self.log_error = None
 
     def start_new_game(self, ignore_winner=True):
+        self.log_error = None
         self._deck = list(DurakCard.all())
         random.shuffle(self._deck)
         self._trump = self._deck[-1]
@@ -94,6 +97,8 @@ class GameController(object):
                 self.to_move,
                 self.deck_count,
             )
+
+        self._save_progress()
 
         return {
             'player1_cards': CardSet(self._player1.cards, trump=self._trump),
@@ -155,7 +160,39 @@ class GameController(object):
     def is_player1_to_move(self):
         return (self._to_move is self._player1)
 
-    def register_move(self, card):
+    def _log_action(self, phase, cards, analysis):
+        if self._logger_enabled and self._logger._log['moves']:
+            player = self._to_respond if phase == 'respond' else self._to_move
+            self._logger.log_action(self.PLAYER1 if player is self._player1 else self.PLAYER2,
+                                    phase, cards, player.cards, self._on_table,
+                                    self._get_game_data_for(player), analysis)
+
+    def _save_progress(self):
+        if self._overwrite_log and not self.is_game_over():
+            self.save_log()
+
+    def save_log(self, reason=None):
+        """Persist a live/abandoned game in the same format as completed games."""
+        if (not self._logger_enabled or not self._log_filename or self.log_error is not None
+                or not self._logger._log['moves']):
+            return
+        if not self.is_game_over():
+            self._logger.log_after_move(self._on_table, self._on_table.given_more)
+            if reason is not None:
+                self._logger.log_interrupted(reason)
+            elif not self._overwrite_log:
+                return  # append-only files get one entry per completed/abandoned game
+        try:
+            if self._overwrite_log:
+                self._logger.write_snapshot(self._log_filename)
+            else:
+                self._logger.write_to_file(self._log_filename)
+        except OSError as error:
+            self.log_error = str(error)
+            warnings.warn('Game log could not be saved to {}: {}'.format(self._log_filename, error),
+                          RuntimeWarning)
+
+    def register_move(self, card, analysis=None):
         if self._state != self.States.MOVING:
             raise exes.InvalidAction(
                 expected=self._state, got=self.States.MOVING
@@ -164,7 +201,9 @@ class GameController(object):
         if card is None:
             if not self._on_table:
                 raise exes.CardIsExpected
+            self._log_action('move', (), analysis)
             self._state = self.States.DEALING
+            self._save_progress()
             return
 
         card = DurakCard(card)
@@ -179,24 +218,28 @@ class GameController(object):
                 )
             )
 
+        self._log_action('move', (card,), analysis)
         self._to_move.cards.remove(card)
         self._on_table.append(card)
         self._state = self.States.RESPONDING
 
         self._check_for_game_over()
+        self._save_progress()
 
-    def register_response(self, card):
+    def register_response(self, card, analysis=None):
         if self._state != self.States.RESPONDING:
             raise exes.InvalidAction(
                 expected=self._state, got=self.States.RESPONDING
             )
 
         if card is None:
+            self._log_action('respond', (), analysis)
             self._no_response = True
             if self._to_move.cards:
                 self._state = self.States.GIVING_MORE
             else:
                 self._state = self.States.DEALING
+            self._save_progress()
             return
 
         card = DurakCard(card)
@@ -213,6 +256,7 @@ class GameController(object):
                 )
             )
 
+        self._log_action('respond', (card,), analysis)
         self._to_respond.cards.remove(card)
         self._on_table.append(card)
 
@@ -222,8 +266,9 @@ class GameController(object):
             self._state = self.States.MOVING
 
         self._check_for_game_over()
+        self._save_progress()
 
-    def register_give_more(self, cards):
+    def register_give_more(self, cards, analysis=None):
         assert self._no_response
 
         if self._state != self.States.GIVING_MORE:
@@ -232,7 +277,9 @@ class GameController(object):
             )
 
         if not cards:
+            self._log_action('give_more', (), analysis)
             self._state = self.States.DEALING
+            self._save_progress()
             return
 
         # нельзя давать больше карт, чем есть у отбивающегося
@@ -256,12 +303,14 @@ class GameController(object):
                 )
             )
 
+        self._log_action('give_more', sorted(cards), analysis)
         self._to_move.cards.difference_update(cards)
         self._on_table.give_more(cards)
 
         self._state = self.States.DEALING
 
         self._check_for_game_over()
+        self._save_progress()
 
     def deal(self):
         if self._state != self.States.DEALING:
@@ -309,6 +358,7 @@ class GameController(object):
                     self.deck_count,
                 )
 
+        self._save_progress()
         return {
             'player1_cards': (
                 CardSet(self._player1.cards, trump=self._trump) -
@@ -354,9 +404,7 @@ class GameController(object):
                 )
             self._logger.log_after_game(self.winner)
             if self._log_filename:
-                self._logger.write_to_file(
-                    self._log_filename, self._overwrite_log
-                )
+                self.save_log()
 
     @property
     def state(self):

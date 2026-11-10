@@ -7,3 +7,5 @@ htmlcov
 dist/
 *.egg-info
 *.egg/
+
+/logs/

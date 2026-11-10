@@ -21,8 +21,8 @@ ASSETS = {'/': ('index.html', 'text/html; charset=utf-8'),
 
 
 class DurakServer(ThreadingHTTPServer):
-    def __init__(self, port=8765, engine='nextgen'):
-        self.game = BrowserGame(engine)
+    def __init__(self, port=8765, engine='nextgen', log_dir=None):
+        self.game = BrowserGame(engine, log_dir=log_dir)
         self.lock = threading.Lock()
         self.token = secrets.token_urlsafe(32)
         super().__init__(('127.0.0.1', port), Handler)
@@ -131,11 +131,13 @@ def main(argv=None):
     parser.add_argument('--port', type=int, default=8765, help='local port (default: 8765; 0: choose a free port)')
     parser.add_argument('--engine', default='nextgen', help='nextgen, dummy, or an engine executable name/path')
     parser.add_argument('--no-browser', action='store_true', help='print the URL without opening a browser')
+    parser.add_argument('--log-dir', default='logs', help='game/decision log directory (default: logs)')
+    parser.add_argument('--no-log', action='store_true', help='disable game and decision logging')
     args = parser.parse_args(argv)
     if not 0 <= args.port <= 65535:
         parser.error('port must be between 0 and 65535')
     try:
-        server = DurakServer(args.port, args.engine)
+        server = DurakServer(args.port, args.engine, log_dir=None if args.no_log else args.log_dir)
     except OSError as error:
         parser.exit(1, 'Cannot start durak-web: {}\n'.format(error))
     try:
