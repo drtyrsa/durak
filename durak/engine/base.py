@@ -22,7 +22,10 @@ class BaseEngine(object):
 
     def run(self):
         while True:
-            line = sys.stdin.readline().strip()
+            line = sys.stdin.readline()
+            if not line:
+                return
+            line = line.strip()
             command_name, args, gamedata = self._parse_line(line)
 
             if command_name == 'init':

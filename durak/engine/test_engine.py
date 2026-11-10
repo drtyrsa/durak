@@ -84,6 +84,11 @@ class BaseEngineTest(unittest.TestCase):
         self.engine.run()
         self.assertFalse(self.stdout_mock.write.called)
 
+    def test_eof_finishes_without_output(self):
+        self.stdin_mock.readline.return_value = ''
+        self.engine.run()
+        self.assertFalse(self.stdout_mock.write.called)
+
     def test_unknown_command(self):
         self.stdin_mock.readline.return_value = 'hahaha arg1 arg2'
         self.engine.run()
@@ -157,6 +162,21 @@ class EngineWrapperTest(unittest.TestCase):
 
         self.wrapper.game_end()
         self.assertTrue(self.wrapper._process is None)
+        self.process.kill.assert_called_once_with()
+
+    def test_game_end_reaps_process_and_closes_pipes_even_after_engine_exit(self):
+        self.process.stdin.write.side_effect = BrokenPipeError
+        self.wrapper.game_end()
+        self.process.kill.assert_called_once_with()
+        self.process.wait.assert_called_once_with()
+        self.process.stdin.close.assert_called_once_with()
+        self.process.stdout.close.assert_called_once_with()
+        self.assertIsNone(self.wrapper._process)
+
+    def test_eof_is_an_engine_error_not_a_pass(self):
+        self.process.stdout.readline.return_value = ''
+        with self.assertRaisesRegex(EngineWrapperException, 'exited without a response'):
+            self.wrapper.move([])
 
     def test_init_writes_command_and_reads_output(self):
         self.wrapper.init(DurakCard('7H'))
@@ -190,7 +210,7 @@ class EngineWrapperTest(unittest.TestCase):
         self.assertTrue(self.process.stdout.readline.called)
 
     def test_move_returns_none_if_no_output_given(self):
-        self.process.stdout.readline.return_value = ''
+        self.process.stdout.readline.return_value = '\n'
 
         result = self.wrapper.move([DurakCard('7H'), DurakCard('8H')])
 
@@ -213,7 +233,7 @@ class EngineWrapperTest(unittest.TestCase):
         self.assertTrue(self.process.stdout.readline.called)
 
     def test_respond_returns_none_if_no_output_given(self):
-        self.process.stdout.readline.return_value = ''
+        self.process.stdout.readline.return_value = '\n'
 
         result = self.wrapper.respond([DurakCard('7H')])
 
@@ -236,7 +256,7 @@ class EngineWrapperTest(unittest.TestCase):
         self.assertTrue(self.process.stdout.readline.called)
 
     def test_give_more_returns_none_if_no_output_given(self):
-        self.process.stdout.readline.return_value = ''
+        self.process.stdout.readline.return_value = '\n'
 
         results = self.wrapper.give_more([DurakCard('7H')])
 

@@ -3,15 +3,19 @@
 
 Я не ставил себе задачу создать незабываемый user experience, так что если использовать что-то не по назначению, компоненты могут падать. Например, если вместо лог-файла открыть картинку с котиком или пытаться использовать в качестве движка утилиту `rm`, все упадет. Трейсбек скорее всего будет вменяемым. 
 ##Установка
-Нужен Python 3 и [wxPython](https://wxpython.org/). Единственная сложность — под Linux у wxPython нет готового wheel на PyPI, поэтому `pip` будет собирать его из исходников (долго и нужны dev-пакеты GTK). Проще скормить pip готовый wheel с сайта wxPython через `-f`:
+Для движков, автоплея и терминальной игры нужен только Python 3; установите `pip install -e .`. Команда `durak-play` запускает игру против NextGen без GUI, `durak-play --engine dummy` — против DummyEngine. Также работают `python3 -m durak.play` и `python3 -m durak.engine.nextgen` из исходников, без сторонних зависимостей.
+
+Терминальная игра поддерживает любой движок с описанным ниже протоколом: `durak-play --engine durak-dummy` (имя исполняемого файла из `PATH`) или `durak-play --engine /path/to/engine`. Пути с пробелами заключайте в кавычки. `nextgen` и `dummy` — встроенные варианты, для них не требуется устанавливать исполняемые файлы. Для передачи движку дополнительных аргументов используйте исполняемый скрипт запуска; значение `--engine` трактуется как один путь, а не команда оболочки.
+
+Для GUI дополнительно нужен [wxPython](https://wxpython.org/). Под Linux можно установить готовый wheel с сайта wxPython через `-f`:
 
 ```
 python3 -m venv ~/durak-env
 source ~/durak-env/bin/activate
-pip install -f https://extras.wxpython.org/wxPython4/extras/linux/gtk3/ubuntu-22.04/ .
+pip install -f https://extras.wxpython.org/wxPython4/extras/linux/gtk3/ubuntu-22.04/ '.[gui]'
 ```
 
-Замените `ubuntu-22.04` на свою версию дистрибутива (список доступных: <https://extras.wxpython.org/wxPython4/extras/linux/gtk3/>). Под Windows и macOS wxPython ставится обычным wheel с PyPI, так что хватает просто `pip install .`.
+Замените `ubuntu-22.04` на свою версию дистрибутива (список доступных: <https://extras.wxpython.org/wxPython4/extras/linux/gtk3/>). Под Windows и macOS wxPython ставится обычным wheel с PyPI, так что хватает `pip install '.[gui]'`.
 
 **Важно:** запускать команды (`durak-gui` и т. д.) нужно из активированного virtualenv. `durak-gui` запускает движок (`durak-dummy` по умолчанию) как подпроцесс и ищет его в `PATH`, а в `PATH` он попадает только при активации окружения.
 
@@ -20,6 +24,15 @@ pip install -f https://extras.wxpython.org/wxPython4/extras/linux/gtk3/ubuntu-22
 pip install pytest
 pytest
 ```
+Для тестов без wxPython и без дисплея: `pytest --ignore=durak/gui`.
+
+## NextGen
+
+`durak-nextgen` использует существующий протокол движков. При пустой колоде восстанавливает руку соперника и точно решает доступный эндшпиль; до этого играет как DummyEngine. По умолчанию расчет ограничен 12 картами на руках и столе суммарно и 500 000 новыми позициями на решение. При превышении лимита используется DummyEngine, и оптимальность такого хода не гарантируется.
+
+Игра в терминале: `durak-play`. Матч движков: `durak-autoplay durak-nextgen durak-dummy --matches-number=1 --match-size=100`. В существующем GUI NextGen можно добавить через меню выбора движка, указав `durak-nextgen`.
+
+[Алгоритм, размеры таблиц и воспроизводимый бенчмарк](nextgen.md).
 ##durak-gui
 Простое GUI, в котором можно сразиться с выбранным движком. (Да, запускается командой `durak-gui`). Сторонний движок можно добавить в меню Настройки -> Выбрать движок. В остальном должно быть все понятно, в дурака играли все.
 ##durak-autoplay
@@ -126,4 +139,4 @@ deal 6C 7C 6H ## {"discarded": [], "deck_count": 22, "on_table": [], "enemy_coun
   - когда подидываете карты через `give_more`, помните, что нельзя отдать сопернику своих карт больше, чем у него было в начале хода. Например, у вас 10 карт, у соперника - 6. Максимум, вы можете выложить на стол 6 своих карт. Больше - ошибка.
 
 ### Примеры движков
-Пример пока один - `durak-dummy`. Исходники на Питоне лежат здесь же - `durak/engine/dummy.py` Он использует `durak/engine/base.py`, который можно использовать как основу для движков на Питоне.
+Примеры — `durak-dummy` и `durak-nextgen`. Исходники: `durak/engine/dummy.py` и `durak/engine/nextgen.py`. Оба используют `durak/engine/base.py`, который можно использовать как основу для движков на Питоне.

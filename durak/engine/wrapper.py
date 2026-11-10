@@ -84,10 +84,23 @@ class EngineWrapper(object):
         return cards
 
     def game_end(self):
-        if self._process is not None:
+        process = self._process
+        if process is None:
+            return
+        try:
             self._write('game_end')
-            self._process.kill()
+        except OSError:
+            # An engine may already have exited or closed its input pipe.
+            pass
+        finally:
             self._process = None
+            process.kill()
+            process.wait()
+            for stream in (process.stdin, process.stdout):
+                try:
+                    stream.close()
+                except OSError:
+                    pass
 
     def _write(self, line):
         logger.debug('sending: (' + str(id(self)) + '): %s' % line)
@@ -101,6 +114,9 @@ class EngineWrapper(object):
         self._write(line.strip())
 
     def _get_output(self):
-        result = self._process.stdout.readline().strip()
+        line = self._process.stdout.readline()
+        if not line:
+            raise EngineWrapperException('Engine exited without a response')
+        result = line.strip()
         logger.debug('receiving: (' + str(id(self)) + '): %s' % result)
         return result
