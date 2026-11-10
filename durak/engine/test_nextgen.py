@@ -191,7 +191,7 @@ class NextGenTest(unittest.TestCase):
         self.assertEqual(result, '')  # cannot beat diamonds with clubs
         self.assertEqual(engine._cards, {DurakCard('7C')})
 
-    def test_missing_inconsistent_or_middlegame_data_uses_dummy(self):
+    def test_missing_or_inconsistent_data_uses_dummy(self):
         for data in ({}, {'deck_count': 5}, {'deck_count': 0},
                      {'deck_count': 0, 'enemy_count': 1, 'discarded': []}):
             engine = NextGenEngine()

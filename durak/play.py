@@ -6,6 +6,7 @@ from durak.controller import GameController
 from durak.controller.exceptions import GameControllerError
 from durak.engine.dummy import DummyEngine
 from durak.engine.nextgen import NextGenEngine
+from durak.gamelogger.logger import new_log_filename
 from durak.engine.wrapper import EngineWrapper, EngineWrapperException
 from durak.utils.cards import DurakCard
 
@@ -63,7 +64,8 @@ def play(engine, read=input, write=print, controller=None):
                 cards = list(map(DurakCard, text.split()))
                 if phase != 'give_more' and len(cards) > 1:
                     raise ValueError('Enter one card at a time.')
-                register(cards if phase == 'give_more' else (cards[0] if cards else None))
+                register(cards if phase == 'give_more' else (cards[0] if cards else None),
+                         analysis=None if human else getattr(engine, 'last_decision', None))
             except (ValueError, GameControllerError) as error:
                 if not human:
                     raise
@@ -87,17 +89,29 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--engine', default='nextgen', metavar='NAME_OR_PATH',
                         help='nextgen (default), dummy, or an engine executable name/path')
+    parser.add_argument('--log-dir', help='save this game for replay, with any engine')
     args = parser.parse_args(argv)
     builtins = {'nextgen': NextGenEngine, 'dummy': DummyEngine}
     external = args.engine not in builtins
     engine = None
+    controller = None
     try:
         engine = (EngineWrapper(os.path.expanduser(args.engine)) if external
                   else builtins[args.engine]())
-        play(engine)
+        if args.log_dir:
+            filename = new_log_filename(args.log_dir)
+            controller = GameController('You', args.engine, log_filename=filename, overwrite_log=True)
+            if isinstance(engine, NextGenEngine):
+                engine.explain_decisions = True
+            print('Game log: {}'.format(filename))
+            play(engine, controller=controller)
+        else:
+            play(engine)
     except (OSError, EngineWrapperException, GameControllerError, ValueError) as error:
         parser.exit(1, 'Engine error: {}\n'.format(error))
     finally:
+        if controller is not None and not controller.is_game_over():
+            controller.save_log(reason='closed')
         if external and engine is not None:
             engine.game_end()
 

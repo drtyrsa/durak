@@ -56,6 +56,12 @@ class LogViewer(object):
     def has_game_loaded(self):
         return bool(self._current_game)
 
+    @property
+    def actions(self):
+        """Additional diagnostics when present; older replay files remain valid."""
+        assert self.has_game_loaded
+        return [action for move in self._current_game['moves'] for action in move.get('actions', [])]
+
     def get_next(self):
         assert self._current_game
         assert self.has_next

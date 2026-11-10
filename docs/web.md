@@ -24,6 +24,8 @@ durak-web --engine /path/to/your-engine
 durak-web --engine "/path/with spaces/engine"
 durak-web --port 9000
 durak-web --port 0 --no-browser   # choose a free port and print its URL
+durak-web --log-dir /path/to/logs
+durak-web --no-log
 ```
 
 `--engine` accepts `nextgen`, `dummy`, or an executable name/path, just like
@@ -57,6 +59,34 @@ Refreshing resumes the table. All tabs using the same server share one game;
 stale actions are rejected rather than applied to a changed position. Scores
 and recent moves last for the current server process. Restarting the server
 resets them. This is a local human-versus-engine game, not network multiplayer.
+
+## Saved games and analysis
+
+`durak-web` automatically saves each game under `./logs/` and prints the file
+path in the terminal. This uses the existing **GameLogger format**, readable
+by the wx log viewer (`durak-logviewer` → open the saved `.log` file), for
+NextGen, Dummy, and external engines alike. Snapshots are updated after every
+accepted action. New deals and server shutdown preserve unfinished games as
+interrupted games, without recording a false draw. Each new deal gets its own
+file. `--no-log` disables saving; `--log-dir` changes the directory.
+
+The usual deck, hands, table and throw-in replay data is preserved. Additional
+`actions` entries record the acting player, hand and public information before
+each action, including explicit takes and passes. Built-in NextGen also attaches
+its candidate scores, card estimates, strategy and exact-search result when
+available. Other engines still produce full game logs; explanations are
+optional metadata, not a requirement of the engine protocol.
+
+Inspect the same files without a GUI:
+
+```sh
+python3 -m durak.gamelogger logs/your-game.log
+python3 -m durak.gamelogger logs/your-game.log --action 17
+```
+
+The first command lists all actions; the second prints the full recorded
+position and any engine explanation. Logs contain both hands for later review;
+they are not served by the web API or included in the browser's game state.
 
 ## Implementation
 
