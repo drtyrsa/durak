@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 import multiprocessing  # http://bugs.python.org/issue15881#msg170215
-from setuptools import setup
+from setuptools import find_packages, setup
 
 
 def show_readme():
@@ -11,6 +11,7 @@ def show_readme():
 setup(
     name='durak',
     version='0.1.0',
+    python_requires='>=3.10',
     classifiers=[
         'Development Status :: 3 - Alpha',
         'License :: OSI Approved :: MIT License',
@@ -23,19 +24,22 @@ setup(
     author='Vlad Starostin',
     author_email='drtyrsa@yandex.ru',
     license='MIT',
-    packages=['durak'],
+    packages=find_packages(),
+    package_data={'durak': ['assets/*.gif']},
     entry_points={
         'console_scripts': [
             'durak-autoplay=durak.autoplay:main',
             'durak-dummy=durak.engine.dummy:main',
+            'durak-nextgen=durak.engine.nextgen:main',
+            'durak-play=durak.play:main',
             'durak-gui=durak.gui.play_app:main',
             'durak-logviewer=durak.gui.view_log_app:main',
         ],
     },
     install_requires=[
         'docopt',
-        'wxPython',
     ],
+    extras_require={'gui': ['wxPython']},
     tests_require=['pytest'],
     zip_safe=False
 )
