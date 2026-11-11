@@ -11,16 +11,20 @@ from durak.utils.cards import DurakCard
 class NextGenEngine(DummyEngine):
     """Strategic middlegame plus exact endgame search when within its budget."""
 
-    def __init__(self, max_cards=12, max_nodes=500_000, middlegame='smart', explain_decisions=False):
+    def __init__(self, max_cards=12, max_nodes=500_000, middlegame='smart', explain_decisions=False,
+                 swindle_depth=3):
         if max_cards < 2 or max_cards > 36:
             raise ValueError('max_cards must be between 2 and 36')
         if max_nodes is not None and max_nodes < 1:
             raise ValueError('max_nodes must be positive or None')
         if middlegame not in ('smart', 'dummy'):
             raise ValueError('middlegame must be smart or dummy')
+        if swindle_depth < 0:
+            raise ValueError('swindle_depth must be non-negative')
         self.middlegame = middlegame
         self.max_cards = max_cards
         self.max_nodes = max_nodes
+        self.swindle_depth = swindle_depth
         self._solver = None
         self.last_solution = None
         self.fallback_reason = None
@@ -64,7 +68,7 @@ class NextGenEngine(DummyEngine):
             self.fallback_reason = 'card limit reached'
             return None
         if self._solver is None or not active.issubset(self._solver.bits):
-            self._solver = EndgameSolver(active, self._trump, self.max_nodes)
+            self._solver = EndgameSolver(active, self._trump, self.max_nodes, self.swindle_depth)
 
         attacker, defender = ((enemy, self._cards) if phase == 'respond'
                               else (self._cards, enemy))
@@ -106,10 +110,15 @@ class NextGenEngine(DummyEngine):
             action = ('throw' if phase == 'give_more' else 'play' if chosen
                       else 'take' if phase == 'respond' else 'stop')
             if strategy == 'exact':
+                expected = self.last_solution.expected_vs_random
                 explanation = {'reason': 'Exact minimax result for the chosen action.',
                                'outcome': self.last_solution.outcome, 'nodes': self.last_solution.nodes,
-                               'candidates': None,
-                               'alternative_note': 'Search may stop at a proven win; alternatives are not all evaluated.'}
+                               'candidates': None, 'expected_vs_random': expected,
+                               'alternative_note': (
+                                   'Search may stop at a proven win; alternatives are not all evaluated.'
+                                   if expected is None else
+                                   'Among equally valued actions, this one has the best expected '
+                                   'outcome if the opponent replies at random.')}
             elif strategy == 'dummy':
                 explanation = {'reason': 'Dummy policy: lowest eligible card; defend whenever possible.',
                                'candidates': None}
@@ -117,7 +126,8 @@ class NextGenEngine(DummyEngine):
                 phase=phase, hand=hand, on_table=list(map(str, table)), gamedata=gamedata,
                 known_enemy=list(map(str, sorted(self._memory.enemy))), trump=str(self._trump),
                 strategy=strategy, exact_unavailable_reason=self.fallback_reason,
-                settings={'max_cards': self.max_cards, 'max_nodes': self.max_nodes, 'middlegame': self.middlegame},
+                settings={'max_cards': self.max_cards, 'max_nodes': self.max_nodes,
+                          'middlegame': self.middlegame, 'swindle_depth': self.swindle_depth},
                 chosen={'action': action, 'cards': chosen}, elapsed_ms=(perf_counter() - started) * 1000)
         return result
 
@@ -139,9 +149,13 @@ def main():
                         help='uncached positions per decision (default: 500000; 0: unlimited)')
     parser.add_argument('--middlegame', choices=('smart', 'dummy'), default='smart',
                         help='strategy while cards remain in the deck (default: smart)')
+    parser.add_argument('--swindle-depth', type=int, default=3,
+                        help='random opponent replies used to break ties in lost/drawn endgames '
+                             '(default: 3; 0: off)')
     args = parser.parse_args()
     try:
-        engine = NextGenEngine(args.max_cards, args.max_nodes or None, args.middlegame)
+        engine = NextGenEngine(args.max_cards, args.max_nodes or None, args.middlegame,
+                               swindle_depth=args.swindle_depth)
     except ValueError as error:
         parser.error(str(error))
     engine.run()

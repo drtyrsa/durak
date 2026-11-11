@@ -5,7 +5,9 @@ reduces the live card count. A pickup keeps the attacker, with fewer cards.
 Consequently the game graph is acyclic: no repetition heuristic is needed.
 """
 from dataclasses import dataclass
+from fractions import Fraction
 from itertools import combinations
+from typing import Optional
 
 from durak.utils.cards import DurakCard
 
@@ -19,6 +21,9 @@ class Solution:
     outcome: int  # +1 win, 0 draw, -1 loss, for the player choosing the action
     cards: tuple  # empty means stop attacking / pick up / throw nothing
     nodes: int  # previously uncached positions evaluated by this call
+    # Only for drawn/lost positions: expected outcome of the chosen action if
+    # the opponent picks uniformly at random (see EndgameSolver.swindle_depth).
+    expected_vs_random: Optional[float] = None
 
 
 class EndgameSolver:
@@ -27,10 +32,17 @@ class EndgameSolver:
     Cards use compact bit masks; the table's order and completed pairings do
     not matter. Only the uncovered attack must be recorded separately.
     ``max_nodes=None`` allows an unlimited exact search. With a budget, only
-    fully solved positions are cached, including when a search is interrupted.
+    fully solved positions are cached, including when a search is interrupted,
+    and the table holds at most ``max_nodes`` entries.
+
+    Exact play is indifferent between moves with the same value. When the
+    player to act cannot force a win, ties are broken toward the move whose
+    expected outcome is best if the opponent chooses uniformly at random for
+    their next ``swindle_depth`` decisions, while our own choices stay exact.
+    ``swindle_depth=0`` disables this and keeps the generation-order choice.
     """
 
-    def __init__(self, cards, trump, max_nodes=None):
+    def __init__(self, cards, trump, max_nodes=None, swindle_depth=3):
         self.trump = DurakCard(trump)
         self.cards = tuple(sorted(set(map(DurakCard, cards)), key=lambda c: (
             c.suit == self.trump.suit, c.numeric_rank, c.suit
@@ -50,9 +62,14 @@ class EndgameSolver:
             )
         if max_nodes is not None and max_nodes < 1:
             raise ValueError('max_nodes must be positive or None')
+        if swindle_depth < 0:
+            raise ValueError('swindle_depth must be non-negative')
         self.max_nodes = max_nodes
+        self.swindle_depth = swindle_depth
         self.table = {}
         self.nodes = 0
+        self._root_live = 0
+        self._call_start = 0
 
     def _mask(self, cards):
         mask = 0
@@ -81,10 +98,97 @@ class EndgameSolver:
         # positive bit: defender must beat this uncovered card or pick up.
         pending = (self.bits[DurakCard(on_table[-1])] if phase == 'respond'
                    else -1 if phase == 'give_more' else 0)
+        self._root_live = a | d | t
+        self._call_start = len(self.table)  # dicts keep insertion order
         self.nodes = 0
         value, action = self._search(a, d, t, pending)
+        persp = -1 if pending > 0 else 1  # converts attacker values to ours
+        expected = None
+        if (persp * value < 1 and self.swindle_depth
+                and self._terminal(a, d, pending) is None):
+            try:
+                action, expected = self._swindle((a, d, t, pending), persp, persp * value)
+            except SearchLimitReached:
+                pass  # keep the exact default action
         cards = tuple(card for card, bit in self.bits.items() if action & bit)
-        return Solution(-value if phase == 'respond' else value, cards, self.nodes)
+        return Solution(persp * value, cards, self.nodes,
+                        None if expected is None else float(expected))
+
+    def _evict(self, capacity):
+        """Make room in a full table by dropping entries from earlier calls.
+
+        Refusing new entries instead would make the search re-expand shared
+        subtrees and exhaust its budget on positions a fresh solver handles.
+        Earlier entries using a card outside the root's live set are
+        unreachable and go first; if that is not enough, all earlier entries
+        go. This call adds fewer entries than its node budget, so afterwards
+        it can always cache everything it solves, just like a fresh solver.
+        """
+        items = list(self.table.items())
+        live = self._root_live
+        old = [(key, value) for key, value in items[:self._call_start]
+               if not (key[0] | key[1] | key[2]) & ~live]
+        new = items[self._call_start:]
+        if len(old) + len(new) >= capacity:
+            old = []
+        self.table = dict(old + new)
+        self._call_start = len(old)
+
+    def _terminal(self, a, d, pending):
+        """Exact value of a finished game, or None while play continues."""
+        # Match the controller's immediate finish and last-card draw rule.
+        if not d:
+            return -1 if a else 0
+        if not a and not (pending > 0 and d.bit_count() == 1
+                          and self.beaters[pending] & d):
+            return 1
+        return None
+
+    def _swindle(self, state, persp, value):
+        """Among actions keeping the exact ``value``, maximize expected_vs_random.
+
+        Returns (action, expectation); the expectation is None when only one
+        action keeps the exact value, so there is no tie to break.
+        """
+        optimal = [(candidate, child, persp * sign)
+                   for candidate, child, sign in self._children(*state)
+                   if persp * sign * self._search(*child)[0] == value]
+        if len(optimal) == 1:
+            return optimal[0][0], None
+        memo = {}
+        best, action = None, 0
+        for candidate, child, child_persp in optimal:
+            score = self._expect(child, child_persp, self.swindle_depth, memo)
+            if best is None or score > best:  # ties keep generation order
+                best, action = score, candidate
+        return action, best
+
+    def _expect(self, state, persp, depth, memo):
+        """Our expected value: we play exactly, the opponent uniformly at random.
+
+        ``depth`` counts the opponent decisions still modelled as random; after
+        that, both sides are assumed to play perfectly. ``persp`` converts the
+        state's attacker-relative values to ours.
+        """
+        key = (state, persp, depth)
+        if key in memo:
+            return memo[key]
+        value = persp * self._search(*state)[0]
+        a, d, t, pending = state
+        if depth == 0 or self._terminal(a, d, pending) is not None:
+            return Fraction(value)
+        ours = (pending <= 0) == (persp == 1)
+        scores = []
+        for _, child, sign in self._children(*state):
+            child_persp = persp * sign
+            if ours:  # never trade exactness for chances
+                if child_persp * self._search(*child)[0] == value:
+                    scores.append(self._expect(child, child_persp, depth, memo))
+            else:
+                scores.append(self._expect(child, child_persp, depth - 1, memo))
+        result = max(scores) if ours else sum(scores, Fraction(0)) / len(scores)
+        memo[key] = result
+        return result
 
     def _eligible(self, hand, on_table):
         ranks = 0
@@ -103,12 +207,9 @@ class EndgameSolver:
             raise SearchLimitReached
         self.nodes += 1
 
-        # Match the controller's immediate finish and last-card draw rule.
-        if not d:
-            result = (-1 if a else 0, 0)
-        elif not a and not (pending > 0 and d.bit_count() == 1
-                            and self.beaters[pending] & d):
-            result = (1, 0)
+        terminal = self._terminal(a, d, pending)
+        if terminal is not None:
+            result = (terminal, 0)
         else:
             target = -1 if pending > 0 else 1  # defender minimizes
             best, action = -2 * target, 0
@@ -121,8 +222,9 @@ class EndgameSolver:
             result = (best, action)
 
         # Bound memory as well as work per call. Entries are always exact.
-        if self.max_nodes is None or len(self.table) < self.max_nodes:
-            self.table[key] = result
+        if self.max_nodes is not None and len(self.table) >= self.max_nodes:
+            self._evict(self.max_nodes)
+        self.table[key] = result
         return result
 
     def _children(self, a, d, t, pending):

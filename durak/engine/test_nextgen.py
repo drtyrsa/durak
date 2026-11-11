@@ -1,4 +1,5 @@
 """Headless validation against the real controller, not a second bitmask model."""
+from fractions import Fraction
 from itertools import combinations, product
 import json
 from random import Random
@@ -133,6 +134,24 @@ class SolverTest(unittest.TestCase):
         solver = EndgameSolver(['6C', '7C', '8C'], '6S')
         self.assertEqual(solver.solve(['6C'], ['7C', '8C']).outcome, 1)
 
+    def test_terminal_positions_return_no_action_or_tie_break_expectation(self):
+        cases = [
+            (['6C', '7C'], [], [], 'move', -1),
+            (['6D'], [], ['6C', '7C'], 'move', -1),
+            ([], ['7C', '8C'], ['6C'], 'respond', -1),
+            ([], ['7C'], ['6D'], 'respond', -1),
+            ([], ['7C'], [], 'move', 1),
+            ([], [], ['6C', '7C'], 'move', 0),
+        ]
+        for attacker, defender, table, phase, outcome in cases:
+            with self.subTest(attacker=attacker, defender=defender, table=table, phase=phase):
+                solver = EndgameSolver(attacker + defender + table, '6S')
+                for _ in range(2):  # also exercise a cached terminal root
+                    result = solver.solve(attacker, defender, table, phase)
+                    self.assertEqual(result.outcome, outcome)
+                    self.assertEqual(result.cards, ())
+                    self.assertIsNone(result.expected_vs_random)
+
     def test_strategy_regressions(self):
         # Greedy low cards, always defending, always throwing, and saving
         # trumps are all sometimes inferior to these proven winning choices.
@@ -169,6 +188,111 @@ class SolverTest(unittest.TestCase):
         result = solver.solve(['6C', '8C'], ['7C', '9C'])
         self.assertIn(result.outcome, (-1, 0, 1))
 
+    def test_full_table_never_does_worse_than_a_fresh_solver(self):
+        # A full table used to stop caching, so a long-lived solver ran out
+        # of budget on positions that a fresh solver solved.
+        rng = Random(5)
+        cards = rng.sample(sorted(DurakCard.all()), 12)
+        shared = EndgameSolver(cards, '6S', max_nodes=2000, swindle_depth=0)
+        evictions = []
+        evict = EndgameSolver._evict
+        with patch.object(EndgameSolver, '_evict',
+                          lambda solver, capacity: (evictions.append(1), evict(solver, capacity))):
+            for _ in range(40):
+                sub = rng.sample(cards, 10)
+                try:
+                    expected = EndgameSolver(sub, '6S', max_nodes=2000, swindle_depth=0).solve(
+                        sub[:5], sub[5:])
+                except SearchLimitReached:
+                    continue
+                self.assertEqual(shared.solve(sub[:5], sub[5:]).outcome, expected.outcome)
+                self.assertLessEqual(len(shared.table), 2000)
+        self.assertTrue(evictions)
+
+    def test_eviction_keeps_reachable_entries_and_drops_unreachable_ones(self):
+        solver = EndgameSolver(['6C', '7C', '8C', '9C', '6D', '7D'], '6S', max_nodes=10_000)
+        solver.solve(['6C', '8C'], ['7C', '9C'])
+        reachable = dict(solver.table)
+        solver.solve(['6D'], ['7D'])
+        solver._root_live = solver._mask(['6C', '7C', '8C', '9C'])
+        solver._call_start = len(solver.table)
+        solver._evict(capacity=10_000)
+        self.assertEqual(solver.table, reachable)
+
+    def test_tie_break_keeps_exact_value_and_seeks_chances(self):
+        attacker, defender = ['QC', '9H', 'JC'], ['9S', 'QS', '7D']
+        plain = EndgameSolver(attacker + defender, '6S', swindle_depth=0).solve(attacker, defender)
+        swindle = EndgameSolver(attacker + defender, '6S').solve(attacker, defender)
+        self.assertEqual((plain.outcome, swindle.outcome), (-1, -1))
+        self.assertIsNone(plain.expected_vs_random)
+        self.assertEqual(tuple(map(str, plain.cards)), ('9H',))  # hopeless vs. random replies
+        self.assertEqual(tuple(map(str, swindle.cards)), ('JC',))
+        self.assertGreater(swindle.expected_vs_random, 0.9)
+
+    def test_tie_break_is_not_used_when_winning(self):
+        solver = EndgameSolver(['6C', '8D', '6D', '7C'], '6S')
+        result = solver.solve(['6C', '8D'], ['6D', '7C'])
+        self.assertEqual(result.outcome, 1)
+        self.assertIsNone(result.expected_vs_random)
+
+    def test_expected_vs_random_matches_controller(self):
+        # Independent expectimax over GameController transitions: we keep the
+        # exact value, the opponent picks uniformly for `depth` decisions.
+        rng = Random(11)
+        deck = sorted(DurakCard.all())
+        checked = set()
+        for index in range(90):
+            cards = rng.sample(deck, 6)
+            trump = rng.choice(deck)
+            oracle = ControllerOracle(self, EndgameSolver(cards, trump, swindle_depth=0))
+            owners = [0, 1] + [rng.randrange(2) for _ in cards[2:]]
+            controller = game([c for c, o in zip(cards, owners) if o == 0],
+                              [c for c, o in zip(cards, owners) if o == 1], trump)
+            target = ('moving', 'responding', 'giving_more')[index % 3]
+            for _ in range(6):  # also reach respond / give_more roots
+                if controller.is_game_over() or controller.state == target:
+                    break
+                apply(controller, rng.choice(legal_actions(controller)))
+            if controller.is_game_over():
+                continue
+            phase = PHASES[controller.state]
+            us = controller.is_player1_to_move() != (phase == 'respond')
+            depth = rng.randrange(1, 4)
+
+            def expect(node, depth):
+                value = oracle.solve(node) * (1 if us else -1)
+                if depth == 0 or node.is_game_over():
+                    return Fraction(value)
+                acting = node.is_player1_to_move() != (PHASES[node.state] == 'respond')
+                scores = []
+                for action in legal_actions(node):
+                    child = clone(node)
+                    apply(child, action)
+                    if acting != us:
+                        scores.append(expect(child, depth - 1))
+                    elif oracle.solve(child) * (1 if us else -1) == value:
+                        scores.append(expect(child, depth))
+                return max(scores) if acting == us else sum(scores, Fraction(0)) / len(scores)
+
+            value = oracle.solve(controller) * (1 if us else -1)
+            options = {}
+            for action in legal_actions(controller):
+                child = clone(controller)
+                apply(child, action)
+                if oracle.solve(child) * (1 if us else -1) == value:
+                    options[frozenset(action)] = expect(child, depth)
+            result = EndgameSolver(cards, trump, swindle_depth=depth).solve(
+                controller._to_move.cards, controller._to_respond.cards, controller.on_table, phase)
+            self.assertEqual(result.outcome, value)
+            self.assertIn(frozenset(result.cards), options)
+            if value == 1 or len(options) == 1:
+                self.assertIsNone(result.expected_vs_random)
+            else:
+                self.assertEqual(options[frozenset(result.cards)], max(options.values()))
+                self.assertAlmostEqual(result.expected_vs_random, float(max(options.values())))
+                checked.add(phase)
+        self.assertEqual(checked, {'move', 'respond', 'give_more'})
+
     def test_invalid_positions_rejected(self):
         solver = EndgameSolver(['6C', '7C'], '6S')
         with self.assertRaises(ValueError):
@@ -180,6 +304,28 @@ class SolverTest(unittest.TestCase):
 
 
 class NextGenTest(unittest.TestCase):
+    def test_logged_settings_reproduce_swindle_choice(self):
+        attacker, defender = ['QC', '9H', 'JC'], ['9S', 'QS', '7D']
+        data = game(attacker, defender).get_game_data_for(GameController.PLAYER1)
+        choices = []
+        for depth in (0, 3):
+            with self.subTest(swindle_depth=depth):
+                engine = NextGenEngine(swindle_depth=depth, explain_decisions=True)
+                engine.init('6S')
+                engine.deal(attacker, {})
+                chosen = engine.move([], data)
+                choices.append(chosen)
+                record = json.loads(json.dumps(engine.last_decision))
+                self.assertEqual(record['settings']['swindle_depth'], depth)
+
+                replay = NextGenEngine(**record['settings'])
+                replay.init(record['trump'])
+                replay.deal(record['hand'], {})
+                self.assertEqual(replay.move(record['on_table'], record['gamedata']), chosen)
+                self.assertEqual(replay.last_solution.outcome, record['outcome'])
+                self.assertEqual(replay.last_solution.expected_vs_random, record['expected_vs_random'])
+        self.assertEqual(choices, ['9H', 'JC'])
+
     def test_inference_uses_discarded_and_table_and_removes_chosen_card(self):
         controller = game(['6C'], ['7C'], table=['6D'], phase='responding')
         engine = NextGenEngine()

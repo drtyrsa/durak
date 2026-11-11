@@ -99,7 +99,12 @@ policy was evaluated on separate deals starting at seed 10000:
 | Opponent | Games | NextGen wins | Losses | Draws | Score (draw = half) |
 | --- | ---: | ---: | ---: | ---: | ---: |
 | Previous NextGen | 2,000 | 982 | 908 | 110 | 51.85% |
-| Dummy | 1,000 | 622 | 309 | 69 | 65.65% |
+| Dummy | 1,000 | 665 | 258 | 77 | 70.35% |
+
+The Dummy row includes the endgame tie-break described under *Why exact
+search terminates*; with `swindle_depth=0` the same deals give 622 / 309 / 69
+(65.65%). The previous-NextGen row predates the tie-break, which both sides
+of that comparison now share.
 
 The improvement over previous NextGen is modest in this sample; this is a
 starting policy, not evidence of universally strong or optimal play. On this
@@ -131,7 +136,8 @@ python3 -m durak.gamelogger matches.log --game 2 --action 17
 Built-in NextGen in web/terminal games with logging enabled supplies the extra
 analysis. It records the hand **before** playing, the table, deck/opponent counts,
 discard pile, remembered cards, candidate cost components and belief estimates.
-Exact decisions report the solved outcome and search nodes. External engines
+Exact decisions report the solved outcome and search nodes, plus
+`expected_vs_random` when a lost or drawn position needed a tie-break. External engines
 use the unchanged card-only protocol, so their logs contain full game/position
 data without internal explanations.
 
@@ -180,12 +186,47 @@ lexicographically between bouts. Pickups cannot create a cycle.
 stores the two hand bit masks, the table bit mask, and the phase/uncovered
 attack. Completed pairings and their order do not affect future choices, so
 equivalent table orders share a cache entry. Values are exact: win > draw >
-loss. A proven winning choice ends that state's search immediately. Equal
-outcomes use deterministic move ordering; distance to victory is not optimized.
+loss. A proven winning choice ends that state's search immediately. Among
+winning actions, the first in deterministic move order is played; distance to
+victory is not optimized.
+
+### Lost and drawn positions
+
+Minimax is indifferent between actions with the same value, but real opponents
+make mistakes. When the player to act cannot force a win, the root action is
+chosen among the **exactly optimal** ones by its expected outcome if the
+opponent picks uniformly among its legal actions for its next `swindle_depth`
+decisions (default 3). Our own decisions inside that lookahead are also
+restricted to exactly optimal actions, and positions after it are valued by
+exact minimax. The tie-break therefore never changes the solved outcome; it
+only prefers losing/drawing lines where more opponent replies are errors.
+`swindle_depth=0` (`--swindle-depth 0`) restores the plain move-order choice.
+
+The uniform-reply model is an assumption, not a model of any particular
+opponent; throw-ins count every legal subset as one reply. Positions after
+opponent mistakes must be solved exactly, so this costs extra nodes. They
+count against the same per-decision budget; if it runs out during the
+tie-break, the exact default action is played instead of falling back.
+
+Measured on the real controller against Dummy: in 1,000 sampled lost or drawn
+five-versus-five endgames (random trumps), the solver side scored 267 wins /
+207 draws / 526 losses without the tie-break and 356 / 200 / 444 at depth 3.
+In 1,200 complete games on seeds 400–999 (both seats), NextGen's losses fell
+from 320 to 274; depth 4 gave 269 and was not worth its extra cost.
+
+### Cache
 
 The cache contains both values and optimal actions and survives subsequent
 decisions in the same game, including pickups. It is reset on `init`. This is
 an **on-demand in-memory table**, not a downloaded or persistent full tablebase.
+
+With a budget the table holds at most `max_nodes` entries. When a search finds
+it full, entries from earlier calls that use a card no longer live (and are
+therefore unreachable) are dropped first; if that is not enough, all earlier
+entries are dropped. The current call adds fewer entries than its node budget,
+so a long-lived solver never fails a search that a fresh solver completes.
+(Previously a full table stopped caching altogether, and searches could run out
+of budget re-expanding shared subtrees.)
 
 With enough memory, work is O(V + E) over visited states and generated actions,
 plus mask operations. Memory is O(V). If `n` cards are live, a loose state-count
@@ -231,7 +272,8 @@ or unequal hands. A position-specific table avoids nearly all that work.
 ## Practical limits and measurements
 
 Defaults: **12 total live cards**, including the table, and **500,000 uncached
-positions per decision**. The cache also holds at most 500,000 entries. These
+positions per decision**, including tie-break work in lost/drawn positions.
+The cache also holds at most 500,000 entries (see *Cache* for eviction). These
 are work/memory guards, not a wall-clock deadline. Above either limit NextGen
 uses DummyEngine for that decision, so that decision has no optimality claim.
 Later decisions retry as the position becomes smaller or cached work helps.
@@ -261,19 +303,25 @@ assert str(solution.cards[0]) == '8D'  # leading 6C only draws
 
 `Solution.outcome` is from the deciding player's perspective; `cards` is the
 optimal action (empty for pass/take); `nodes` counts new states in that call.
-`NextGenEngine.last_solution` is set only for a completed exact search;
+`expected_vs_random` is set only when a lost or drawn position had several
+exactly optimal actions; it is the chosen action's expected outcome (−1..1)
+under the uniform-reply model. `NextGenEngine.last_solution` is set only for a completed exact search;
 otherwise `fallback_reason` explains why exact search was not used (a nonempty
 deck normally selects the middlegame policy). The standalone solver has
 no default budget and raises `SearchLimitReached` if an explicit budget expires.
 
-The initial benchmark on this development machine, CPython 3.10, seed
-20261110, fixed spade trump, 200 uniformly sampled six-versus-six deals: all
-200 solved; median about 4 ms / 2,015 new positions, maximum about 236 ms /
-102,885 positions. These are sample results, not worst-case guarantees.
+The benchmark on this development machine, CPython 3.10, seed 20261110, fixed
+spade trump, 200 uniformly sampled six-versus-six deals: all 200 solved; median
+about 30 ms / 15,748 new positions, maximum about 760 ms / 340,303 positions.
+With `--swindle-depth 0`: median about 3.5 ms / 2,015 positions, maximum about
+230 ms / 102,885. These first decisions are the expensive case; later
+decisions reuse the cache. These are sample results, not worst-case guarantees.
 Run the benchmark command above to measure your machine or larger hands.
 
 Validation includes all 5,040 one-versus-one cases across trump suits,
 5,015 independently evaluated controller positions from a six-card universe,
+an independent controller-based check of tie-break expectations in move,
+respond and give-more positions, cache-pressure regressions,
 strategic regressions for voluntary takes, stopping attacks, stronger defences
 and trump throw-ins, protocol subprocess tests, complete headless games, and
 terminal input handling.
