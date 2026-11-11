@@ -129,7 +129,7 @@ class Handler(BaseHTTPRequestHandler):
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--port', type=int, default=8765, help='local port (default: 8765; 0: choose a free port)')
-    parser.add_argument('--engine', default='nextgen', help='nextgen, dummy, or an engine executable name/path')
+    parser.add_argument('--engine', default='nextgen', help='nextgen, smart_runner, dummy, or an engine executable name/path')
     parser.add_argument('--no-browser', action='store_true', help='print the URL without opening a browser')
     parser.add_argument('--log-dir', default='logs', help='game/decision log directory (default: logs)')
     parser.add_argument('--no-log', action='store_true', help='disable game and decision logging')

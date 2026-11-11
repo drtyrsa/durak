@@ -32,6 +32,7 @@ setup(
             'durak-dummy=durak.engine.dummy:main',
             'durak-nextgen=durak.engine.nextgen:main',
             'durak-play=durak.play:main',
+            'durak-smart-runner=durak.engine.smart_runner:main',
             'durak-web=durak.web.server:main',
             'durak-gui=durak.gui.play_app:main',
             'durak-logviewer=durak.gui.view_log_app:main',

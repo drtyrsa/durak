@@ -1,4 +1,4 @@
-"""Reproducible, paired-deal headless matches against Dummy or old NextGen."""
+"""Reproducible, paired-deal headless matches between built-in engines."""
 import argparse
 from collections import Counter
 import json
@@ -10,6 +10,7 @@ from unittest.mock import patch
 from durak.controller import GameController
 from durak.engine.dummy import DummyEngine
 from durak.engine.nextgen import NextGenEngine
+from durak.engine.smart_runner import SmartRunnerEngine
 from durak.utils.cards import DurakCard
 
 
@@ -55,27 +56,36 @@ def play_game(first, second, seed, timings=None):
         for index, player in enumerate((controller._player1, controller._player2)):
             if engines[index]._cards != player.cards:
                 raise AssertionError('engine hand diverged from controller')
-            if isinstance(engines[index], NextGenEngine) and controller.state == 'moving':
+            memory = (engines[index]._memory.enemy if isinstance(engines[index], NextGenEngine)
+                      else engines[index]._enemy if isinstance(engines[index], SmartRunnerEngine)
+                      else None)
+            if memory is not None and controller.state == 'moving':
                 enemy = (controller._player2, controller._player1)[index]
                 # Just-played cards are still in memory until the next observation.
-                remembered = engines[index]._memory.enemy - set(controller.on_table)
+                remembered = memory - set(controller.on_table)
                 if not remembered <= enemy.cards:
                     raise AssertionError('engine remembered cards the opponent does not hold')
     raise RuntimeError('game exceeded 5000 actions (seed %d)' % seed)
 
 
-def benchmark(pairs=100, seed=0, opponent='previous'):
+ENGINES = {
+    'nextgen': NextGenEngine,
+    'previous': lambda: NextGenEngine(middlegame='dummy'),  # Dummy middlegame, same endgame
+    'smart_runner': SmartRunnerEngine,
+    'dummy': DummyEngine,
+}
+
+
+def benchmark(pairs=100, seed=0, opponent='previous', engine='nextgen'):
     if pairs < 1:
         raise ValueError('pairs must be positive')
-    if opponent not in ('previous', 'dummy'):
-        raise ValueError('opponent must be previous or dummy')
+    if opponent not in ENGINES or engine not in ENGINES:
+        raise ValueError('engines must be one of: ' + ', '.join(ENGINES))
     scores, timings = Counter(), []
     start = perf_counter()
     for deal_seed in range(seed, seed + pairs):
         for seat in range(2):
-            baseline = (NextGenEngine(middlegame='dummy') if opponent == 'previous'
-                        else DummyEngine())
-            engines = [NextGenEngine(), baseline]
+            engines = [ENGINES[engine](), ENGINES[opponent]()]
             if seat:
                 engines.reverse()
             game_timings = ([], [])
@@ -83,7 +93,7 @@ def benchmark(pairs=100, seed=0, opponent='previous'):
             timings.extend(game_timings[seat])
             scores['draws' if winner is None else 'wins' if winner == seat else 'losses'] += 1
     games = pairs * 2
-    return {'opponent': opponent, 'pairs': pairs, 'games': games, 'seed': seed,
+    return {'engine': engine, 'opponent': opponent, 'pairs': pairs, 'games': games, 'seed': seed,
             **{key: scores[key] for key in ('wins', 'losses', 'draws')},
             'score': (scores['wins'] + scores['draws'] / 2) / games,
             'seconds': perf_counter() - start,
@@ -96,10 +106,12 @@ def main():
     parser.add_argument('--pairs', type=int, default=100,
                         help='each deal is played twice, swapping engine seats')
     parser.add_argument('--seed', type=int, default=0, help='first deal seed')
-    parser.add_argument('--opponent', choices=('previous', 'dummy'), default='previous')
+    parser.add_argument('--engine', choices=sorted(ENGINES), default='nextgen',
+                        help='engine whose score is reported (default: nextgen)')
+    parser.add_argument('--opponent', choices=sorted(ENGINES), default='previous')
     args = parser.parse_args()
     try:
-        result = benchmark(args.pairs, args.seed, args.opponent)
+        result = benchmark(args.pairs, args.seed, args.opponent, args.engine)
     except ValueError as error:
         parser.error(str(error))
     print(json.dumps(result, indent=2))

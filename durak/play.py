@@ -6,6 +6,7 @@ from durak.controller import GameController
 from durak.controller.exceptions import GameControllerError
 from durak.engine.dummy import DummyEngine
 from durak.engine.nextgen import NextGenEngine
+from durak.engine.smart_runner import SmartRunnerEngine
 from durak.gamelogger.logger import new_log_filename
 from durak.engine.wrapper import EngineWrapper, EngineWrapperException
 from durak.utils.cards import DurakCard
@@ -88,10 +89,10 @@ def play(engine, read=input, write=print, controller=None):
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--engine', default='nextgen', metavar='NAME_OR_PATH',
-                        help='nextgen (default), dummy, or an engine executable name/path')
+                        help='nextgen (default), smart_runner, dummy, or an engine executable name/path')
     parser.add_argument('--log-dir', help='save this game for replay, with any engine')
     args = parser.parse_args(argv)
-    builtins = {'nextgen': NextGenEngine, 'dummy': DummyEngine}
+    builtins = {'nextgen': NextGenEngine, 'smart_runner': SmartRunnerEngine, 'dummy': DummyEngine}
     external = args.engine not in builtins
     engine = None
     controller = None
@@ -101,7 +102,7 @@ def main(argv=None):
         if args.log_dir:
             filename = new_log_filename(args.log_dir)
             controller = GameController('You', args.engine, log_filename=filename, overwrite_log=True)
-            if isinstance(engine, NextGenEngine):
+            if hasattr(engine, 'explain_decisions'):
                 engine.explain_decisions = True
             print('Game log: {}'.format(filename))
             play(engine, controller=controller)
