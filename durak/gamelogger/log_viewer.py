@@ -62,6 +62,12 @@ class LogViewer(object):
         assert self.has_game_loaded
         return [action for move in self._current_game['moves'] for action in move.get('actions', [])]
 
+    @property
+    def luck(self):
+        """Finished-game estimate, or None for older/interrupted games."""
+        assert self.has_game_loaded
+        return self._current_game.get('luck')
+
     def get_next(self):
         assert self._current_game
         assert self.has_next

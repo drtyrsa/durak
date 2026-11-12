@@ -32,9 +32,11 @@ class GameLogger(object):
         self._log['opened_trump'] = str(opened_trump)
         self._log['started_at'] = datetime.now().isoformat()
 
-    def log_after_game(self, winner):
+    def log_after_game(self, winner, luck=None):
         self._log['result'] = self._get_result(winner)
         self._log['ended_at'] = datetime.now().isoformat()
+        if luck is not None:
+            self._log['luck'] = luck
 
     def log_before_move(self, player1_cards, player2_cards, to_move,
                         deck_count):

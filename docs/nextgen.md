@@ -124,6 +124,9 @@ python3 -m durak.engine.matchup --engine nextgen --opponent smart_runner --pairs
 python3 -m durak.engine.matchup --engine nextgen --opponent dummy --pairs 100 --seed 130000
 ```
 
+Reports include ordinary and luck-adjusted scores, uncertainty over independent
+deals, and Elo-style performance differences. [Luck model and interpretation](luck.md).
+
 The analytic exchange policy was developed on deals 100000–100099, with an
 initial Smart Runner check on 101000–101019. The final policy was then tested on
 separate deals, using default settings for every engine:

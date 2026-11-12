@@ -89,13 +89,22 @@ class SharedDiagnosticsTest(unittest.TestCase):
                     self.assertTrue(any(a['strategy'] == 'exact' for a in details))
                 else:
                     self.assertFalse(any('analysis' in a for a in viewer.actions))
-                self.assertIn('result', json.loads(Path(browser.log_filename).read_text().splitlines()[1]))
+                saved = json.loads(Path(browser.log_filename).read_text().splitlines()[1])
+                self.assertIn('result', saved)
+                self.assertEqual(saved['luck'], browser.snapshot()['luck'])
+                self.assertEqual(saved['luck']['cards_drawn'], 24)
+                output = io.StringIO()
+                with redirect_stdout(output):
+                    inspect_log([browser.log_filename, '--luck'])
+                self.assertEqual(json.loads(output.getvalue()), saved['luck'])
 
     def test_autoplay_appends_one_replayable_entry_per_game(self):
         launcher = str(self.external_dummy())
         filename = str(Path(self.directory.name, 'matches.log'))
         for _ in range(2):
-            _play_game(launcher, launcher, filename)
+            details = {}
+            _play_game(launcher, launcher, filename, details)
+            self.assertEqual(details['luck']['cards_drawn'], 24)
         viewer = LogViewer(filename)
         self.assertEqual(len(list(viewer.iterindex())), 2)
         for index in range(2):
@@ -122,8 +131,14 @@ class SharedDiagnosticsTest(unittest.TestCase):
         old = json.loads(Path(first).read_text().splitlines()[1])
         self.assertEqual(old['interruption_reason'], 'new_deal')
         self.assertNotIn('result', old)  # interruption is not a draw
+        self.assertNotIn('luck', old)
         self.assertEqual(len(load(first).actions), 1)
         self.assertEqual(load(browser.log_filename).actions, [])
+        self.assertIsNone(load(first).luck)
+        output = io.StringIO()
+        with redirect_stdout(output):
+            inspect_log([first, '--luck'])
+        self.assertIn('No luck estimate', output.getvalue())
 
     def test_log_inspector_shows_any_engine_and_full_action(self):
         browser = self.browser('dummy')

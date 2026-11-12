@@ -4,6 +4,7 @@ import warnings
 
 from durak.controller import exceptions as exes
 from durak.gamelogger import GameLogger
+from durak.luck import LuckTracker
 from durak.utils.cards import DurakCard, CardSet
 
 
@@ -56,6 +57,7 @@ class GameController(object):
         self._logger = GameLogger()
         self._logger_enabled = True
         self.log_error = None
+        self._luck = None
 
     def start_new_game(self, ignore_winner=True):
         self.log_error = None
@@ -77,6 +79,7 @@ class GameController(object):
             cards=self._deck[6:12], trump=self._trump
         )
         self._deck = self._deck[12:]
+        self._luck = LuckTracker(self._player1.cards, self._player2.cards, self._trump)
 
         if not ignore_winner and self._winner is not None:
             self._to_move = self._winner
@@ -344,6 +347,10 @@ class GameController(object):
 
             cards_needed = 6 - len(player.cards)
             if cards_needed > 0:
+                if self._luck is not None:
+                    self._luck.observe_refill(
+                        0 if player is self._player1 else 1,
+                        self._player1.cards, self._player2.cards, self._deck, cards_needed)
                 player.cards.update(self._deck[:cards_needed])
                 self._deck = self._deck[cards_needed:]
 
@@ -402,13 +409,19 @@ class GameController(object):
                 self._logger.log_after_move(
                     self._on_table, self._on_table.given_more
                 )
-            self._logger.log_after_game(self.winner)
+            self._logger.log_after_game(self.winner, luck=self.luck_report())
             if self._log_filename:
                 self.save_log()
 
     @property
     def state(self):
         return self._state
+
+    def luck_report(self):
+        """Post-game only: this estimate uses hidden cards, never give it to engines."""
+        if self.is_game_over() and self._luck is not None:
+            return self._luck.report()
+        return None
 
     @property
     def on_table(self):

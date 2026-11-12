@@ -3,6 +3,8 @@ import http.client
 import json
 from pathlib import Path
 from random import Random
+import shutil
+import subprocess
 import sys
 import tempfile
 import threading
@@ -31,6 +33,12 @@ def position(human, opponent, table=(), phase='moving', enemy_attacks=False):
 
 
 class BrowserGameTest(unittest.TestCase):
+    @unittest.skipUnless(shutil.which('node'), 'Node.js is optional; needed only for JavaScript tests')
+    def test_luck_display_javascript(self):
+        result = subprocess.run(['node', '--test', str(Path(__file__).with_name('test_luck_display.cjs'))],
+                                capture_output=True, text=True, timeout=10)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
     def test_snapshot_hides_opponent_and_deck_cards(self):
         browser = BrowserGame()
         state = browser.start()
@@ -39,6 +47,7 @@ class BrowserGameTest(unittest.TestCase):
         self.assertNotIn('opponent_hand', state)
         self.assertNotIn('player2_cards', state)
         self.assertNotIn('deck', state)
+        self.assertNotIn('luck', state)
         self.assertEqual(state['deck_count'], 24)
         self.assertEqual(state['game_number'], 1)
         self.assertEqual(state['scores'], {'you': 0, 'opponent': 0, 'draw': 0})
@@ -164,6 +173,7 @@ class BrowserGameTest(unittest.TestCase):
                 self.assertEqual(set(state['hand']), set(map(str, controller._player1.cards)))
                 if state['game_over']:
                     break
+                self.assertNotIn('luck', state)
                 if state['human_turn']:
                     phases.add(state['phase'])
                     if state['phase'] == 'giving_more':
@@ -178,6 +188,11 @@ class BrowserGameTest(unittest.TestCase):
             else:
                 self.fail('Game did not finish')
             self.assertEqual(sum(state['scores'].values()), 1)
+            self.assertEqual(state['luck'], controller.luck_report())
+            self.assertEqual(state['luck']['cards_drawn'], 24)
+            self.assertAlmostEqual(state['luck']['total'],
+                                   state['luck']['opening'] + state['luck']['refills'])
+            self.assertNotIn('luck', browser.start())
         self.assertEqual(phases, {'moving', 'responding', 'giving_more'})
 
     def test_custom_engine_restarts_and_closes(self):

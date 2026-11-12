@@ -49,6 +49,12 @@ paths cannot be supplied by HTTP requests.
   engine. This selection is kept for subsequent games.
 - **Rules** opens the rules. The game-end dialog offers a
   rematch or lets you review the final table.
+- **Luck balance** appears after the game, in the result dialog and sidebar.
+  Its percentile compares your card luck with fixed reference games: **Very
+  lucky — top 5%**, for example, is not a 95% chance of winning.
+  Expand **Why?** for starting hands, draws, trumps, high cards, cheap answers,
+  pairs and suit coverage. Winning despite worse estimated luck is highlighted.
+  [How luck is measured and used in engine comparisons](luck.md).
 
 Opponent plays and table clearing are displayed as separate steps, following
 the wx app's delayed throw-in display. The opponent's cards remain hidden.
@@ -82,6 +88,7 @@ Inspect the same files without a GUI:
 ```sh
 python3 -m durak.gamelogger logs/your-game.log
 python3 -m durak.gamelogger logs/your-game.log --action 17
+python3 -m durak.gamelogger logs/your-game.log --luck
 ```
 
 The first command lists all actions; the second prints the full recorded
@@ -111,3 +118,7 @@ python3 -m pytest --ignore=durak/gui
 The web tests include full games, card conservation, attacks and defences,
 pickups, throw-in limits, last-card draws, engine lifecycle, revision handling,
 and real HTTP requests. The HTTP tests bind temporary loopback ports.
+
+The luck display's JavaScript tests also run from pytest when Node.js is
+available, or directly with `node --test durak/web/test_luck_display.cjs`.
+Node.js remains optional and is not needed to run the game.

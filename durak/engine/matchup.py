@@ -12,6 +12,7 @@ from durak.engine.dummy import DummyEngine
 from durak.engine.nextgen import NextGenEngine
 from durak.engine.puppeteer import PuppeteerEngine
 from durak.engine.smart_runner import SmartRunnerEngine
+from durak.matchstats import summarize_scores
 from durak.utils.cards import DurakCard
 
 
@@ -22,7 +23,7 @@ class DealRandom(Random):
         super().shuffle(cards)
 
 
-def play_game(first, second, seed, timings=None):
+def play_game(first, second, seed, timings=None, details=None):
     """Return winner seat (0/1), or None for a draw; validate every action."""
     controller = GameController()
     controller._logger_enabled = False
@@ -37,6 +38,8 @@ def play_game(first, second, seed, timings=None):
     phases = {'moving': 'move', 'responding': 'respond', 'giving_more': 'give_more'}
     for _ in range(5000):
         if controller.is_game_over():
+            if details is not None:
+                details['luck'] = controller.luck_report()
             return players.index(controller.winner) if controller.winner else None
         if controller.state == controller.States.DEALING:
             dealt = controller.deal()
@@ -84,21 +87,28 @@ def benchmark(pairs=100, seed=0, opponent='previous', engine='nextgen'):
         raise ValueError('pairs must be positive')
     if opponent not in ENGINES or engine not in ENGINES:
         raise ValueError('engines must be one of: ' + ', '.join(ENGINES))
-    scores, timings = Counter(), []
+    scores, timings, blocks = Counter(), [], []
     start = perf_counter()
     for deal_seed in range(seed, seed + pairs):
+        block = []
         for seat in range(2):
             engines = [ENGINES[engine](), ENGINES[opponent]()]
             if seat:
                 engines.reverse()
             game_timings = ([], [])
-            winner = play_game(*engines, deal_seed, game_timings)
+            details = {}
+            winner = play_game(*engines, deal_seed, game_timings, details)
             timings.extend(game_timings[seat])
             scores['draws' if winner is None else 'wins' if winner == seat else 'losses'] += 1
+            result = 0.5 if winner is None else float(winner == seat)
+            luck = details['luck']['total'] * (1 if seat == 0 else -1)
+            block.append((result, luck))
+        blocks.append(block)
     games = pairs * 2
     return {'engine': engine, 'opponent': opponent, 'pairs': pairs, 'games': games, 'seed': seed,
             **{key: scores[key] for key in ('wins', 'losses', 'draws')},
             'score': (scores['wins'] + scores['draws'] / 2) / games,
+            'strength': summarize_scores(blocks),
             'seconds': perf_counter() - start,
             'median_middlegame_ms': median(timings) * 1000,
             'max_middlegame_ms': max(timings) * 1000}

@@ -269,6 +269,134 @@ function renderTurn() {
   }
 }
 
+// Fixed, outcome-independent display reference; see docs/luck.md.
+// Default Smart Runner vs Dummy, seeds 202613000–202613099, both engine seats.
+// Each game contributes +|luck| and -|luck|; 200 games, 100 independent deals.
+// Sorted magnitudes are rounded to 9 decimal places. Never used for match scores.
+const luckReference = Object.freeze({
+  id: 'chance-v1-sr-dummy-202613000-100',
+  model: 'chance-v1',
+  games: 200,
+  magnitudes: Object.freeze([
+    0.001260713, 0.001527226, 0.001754735, 0.002128654, 0.002466936, 0.003853565, 0.004460813, 0.006479610,
+    0.007101921, 0.007245484, 0.007466788, 0.012101053, 0.012167615, 0.014649330, 0.017259338, 0.018012846,
+    0.019745366, 0.020806312, 0.022205949, 0.022495836, 0.023272649, 0.024939233, 0.027822689, 0.028512288,
+    0.028591235, 0.031040822, 0.031631311, 0.031856554, 0.032905104, 0.035293741, 0.035696755, 0.036455957,
+    0.037394335, 0.038491268, 0.040733669, 0.042143570, 0.043326360, 0.044094799, 0.045425448, 0.046800143,
+    0.048432473, 0.049454419, 0.050213844, 0.050946691, 0.052243288, 0.053191182, 0.055033260, 0.055888476,
+    0.057841661, 0.058911240, 0.061064568, 0.061717256, 0.061791981, 0.061970494, 0.062031068, 0.063783714,
+    0.065660310, 0.065883014, 0.066571763, 0.067950937, 0.067999816, 0.069264067, 0.070305293, 0.070656851,
+    0.071268691, 0.071471669, 0.071685666, 0.078877850, 0.079124818, 0.079668977, 0.080652258, 0.081539465,
+    0.082948096, 0.083353360, 0.083358808, 0.084062084, 0.084454183, 0.087712889, 0.089135403, 0.091204318,
+    0.091281668, 0.092051608, 0.092169485, 0.093441183, 0.093442074, 0.094307723, 0.095867847, 0.097603708,
+    0.098145683, 0.098432034, 0.103110858, 0.103509091, 0.105282662, 0.106236316, 0.106518838, 0.109070939,
+    0.110390766, 0.111677186, 0.111855462, 0.111900692, 0.112096678, 0.115714966, 0.116223538, 0.116356200,
+    0.117643601, 0.118034230, 0.118180086, 0.118635942, 0.118824992, 0.119929820, 0.121093271, 0.122417962,
+    0.132033574, 0.134065074, 0.136226981, 0.136824479, 0.137279191, 0.139797284, 0.141091557, 0.142481199,
+    0.142816763, 0.142895420, 0.143163402, 0.144393252, 0.146378512, 0.147962241, 0.148365878, 0.149515176,
+    0.150375140, 0.151420423, 0.154766365, 0.156575519, 0.158615111, 0.158731035, 0.159954893, 0.163948480,
+    0.165750947, 0.165961237, 0.168878319, 0.169789840, 0.170838136, 0.171249296, 0.172306418, 0.173397696,
+    0.175217164, 0.178722606, 0.178791315, 0.178878809, 0.190398447, 0.190541002, 0.191585808, 0.192978194,
+    0.194650861, 0.195044874, 0.198460605, 0.204088103, 0.205643712, 0.208254558, 0.211297812, 0.213067180,
+    0.223906302, 0.224516898, 0.234113425, 0.236248043, 0.237280228, 0.238021746, 0.240051487, 0.240174615,
+    0.240385015, 0.240455088, 0.241410772, 0.242731377, 0.246465414, 0.248355830, 0.249308619, 0.255114971,
+    0.255898444, 0.256831851, 0.261861439, 0.263734985, 0.273737531, 0.276538904, 0.281642420, 0.284213052,
+    0.295272439, 0.295731228, 0.296288277, 0.301029463, 0.305288751, 0.306099713, 0.318127636, 0.328989860,
+    0.333625190, 0.336924036, 0.337900962, 0.338221980, 0.362526931, 0.367980492, 0.375871887, 0.376626561,
+  ]),
+});
+
+function luckPresentation(luck) {
+  if (!luck || luck.model !== luckReference.model || !Number.isFinite(luck.total)) return null;
+  let below = 0;
+  let equal = 0;
+  for (const magnitude of luckReference.magnitudes) {
+    for (const value of [-magnitude, magnitude]) {
+      if (value < luck.total) below++;
+      else if (value === luck.total) equal++;
+    }
+  }
+  // Midranks handle ties; half an observation at each tail avoids claiming
+  // that any finite sample identifies 0% or 100% ("perfect") luck.
+  const percentile = 100 * (below + equal / 2 + 0.5) / (2 * luckReference.games + 1);
+  let verdict = 'Fairly even — near the middle';
+  if (percentile >= 60) {
+    const label = percentile >= 90 ? 'Very lucky' : 'Lucky';
+    verdict = `${label} — top ${Math.ceil(100 - percentile)}%`;
+  } else if (percentile <= 40) {
+    const label = percentile <= 10 ? 'Very unlucky' : 'Unlucky';
+    verdict = `${label} — bottom ${Math.ceil(percentile)}%`;
+  }
+  return {percentile, verdict};
+}
+
+function renderLuck() {
+  const luck = state.game_over && state.luck;
+  const presentation = luckPresentation(luck);
+  for (const id of ['luck-result', 'luck-sidebar']) {
+    const panel = $(id);
+    panel.hidden = !presentation;
+    // Preserve the expanded breakdown while reviewing the same result.
+    if (!presentation || panel.dataset.revision === String(state.revision)) continue;
+    panel.dataset.revision = state.revision;
+    panel.replaceChildren();
+    const title = document.createElement('p');
+    title.className = 'eyebrow';
+    title.textContent = 'Luck balance';
+    const verdict = document.createElement('p');
+    verdict.className = 'luck-verdict';
+    verdict.textContent = presentation.verdict;
+    const meter = document.createElement('meter');
+    meter.min = 0;
+    meter.max = 100;
+    meter.value = presentation.percentile;
+    meter.className = 'luck-meter';
+    meter.setAttribute('aria-label', 'Your estimated luck percentile');
+    meter.setAttribute('aria-valuetext', `${presentation.verdict}, compared with reference games`);
+    const track = document.createElement('div');
+    track.className = 'luck-track';
+    track.setAttribute('aria-hidden', 'true');
+    track.style.setProperty('--luck-position', `${meter.value}%`);
+    const marker = document.createElement('span');
+    track.append(marker);
+    const labels = document.createElement('div');
+    labels.className = 'luck-labels';
+    for (const text of ['Unlucky', 'Typical', 'Lucky']) {
+      const label = document.createElement('span');
+      label.textContent = text;
+      labels.append(label);
+    }
+    const breakdown = document.createElement('details');
+    const summary = document.createElement('summary');
+    summary.textContent = 'Why?';
+    const rows = document.createElement('dl');
+    const entries = [['Starting hands', luck.opening], ['Draws', luck.refills]];
+    for (const [key, name] of [['trumps', 'Trumps'], ['ranks', 'High cards'],
+      ['answers', 'Cheap answers'], ['pairs', 'Pairs & sets'], ['suits', 'Suit coverage']]) {
+      entries.push([name, luck.components[key]]);
+    }
+    for (const [name, value] of entries) {
+      const term = document.createElement('dt');
+      term.textContent = name;
+      const definition = document.createElement('dd');
+      definition.textContent = Math.abs(value) < 0.005 ? 'Even' : value > 0 ? 'You' : 'Opponent';
+      rows.append(term, definition);
+    }
+    const note = document.createElement('p');
+    note.className = 'luck-note';
+    note.textContent = `Compared with both players in ${luckReference.games} Smart Runner–Dummy games. Starting hands and unexpected draws count; pickups and the visible trump don’t. This isn’t a win probability.`;
+    breakdown.append(summary, rows, note);
+    panel.append(title, verdict, meter, track, labels);
+    if (state.winner === 'you' && presentation.percentile <= 40) {
+      const achievement = document.createElement('p');
+      achievement.className = 'luck-achievement';
+      achievement.textContent = 'Won against the cards';
+      panel.append(achievement);
+    }
+    panel.append(breakdown);
+  }
+}
+
 function render() {
   if (!state) return;
   document.querySelectorAll('.new-trigger, #play-again').forEach((button) => {
@@ -319,6 +447,7 @@ function render() {
   renderHand();
   renderTable();
   renderTurn();
+  renderLuck();
   if (state.game_over && resultShown !== state.revision) {
     resultShown = state.revision;
     $('result-title').textContent = {you: 'You win', opponent: `${engine.name} wins`, draw: 'Draw'}[state.winner];

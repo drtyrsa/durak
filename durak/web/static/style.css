@@ -146,6 +146,24 @@ select{padding:12px;border:1px solid #d4d7c6;border-radius:6px;background:#fffdf
 .rules-list span{display:block;color:#7e8477;font-size:12px;line-height:1.65}
 .rule-tip{padding:14px;background:#e9ecdf;border-radius:6px;color:#6c775f;font-size:11px;line-height:1.6;margin:20px 0}
 #result-dialog{text-align:center}
+.luck-panel{text-align:left;margin:0 0 24px}
+.luck-panel[hidden]{display:none}
+.luck-verdict{font-size:14px;line-height:1.5;margin:8px 0 14px;color:var(--ink)}
+.luck-achievement{font-size:12px;color:var(--ink);margin:14px 0 0}
+.luck-meter{position:absolute;clip-path:inset(50%);width:1px;height:1px;overflow:hidden}
+.luck-track{position:relative;height:8px;border-radius:4px;background:linear-gradient(90deg,#bb7b72,#e4ded0 50%,#6b9690);margin:0 5px}
+.luck-track::before{content:"";position:absolute;left:50%;top:-3px;width:1px;height:14px;background:#8d9184}
+.luck-track span{position:absolute;left:clamp(0%,var(--luck-position),100%);top:50%;width:12px;height:12px;background:var(--ink);border:2px solid #f8f5ed;border-radius:50%;transform:translate(-50%,-50%);box-shadow:0 1px 3px #0002}
+.luck-labels{display:grid;grid-template-columns:repeat(3,1fr);font-size:10px;color:#777f72;margin-top:9px}
+.luck-labels span:nth-child(2){text-align:center}
+.luck-labels span:last-child{text-align:right}
+.luck-panel details{font-size:12px;margin-top:14px;color:#646e61}
+.luck-panel summary{cursor:pointer;width:fit-content}
+.luck-panel dl{display:grid;grid-template-columns:1fr auto;gap:7px 10px;margin:14px 0}
+.luck-panel dd{margin:0;text-align:right;color:var(--ink)}
+.luck-panel dt:nth-of-type(3),.luck-panel dd:nth-of-type(3){border-top:1px solid #e0ddcf;padding-top:9px;margin-top:3px}
+.luck-note{font-size:11px;line-height:1.6;margin:12px 0 0;color:#777f72}
+#luck-sidebar{border-top:1px solid #deded0;padding-top:20px;margin-top:20px}
 .result-review{margin-top:17px;color:#8d927f}
 #toast{position:fixed;bottom:25px;left:50%;transform:translateX(-50%);padding:15px 22px;border-radius:9px;background:#58343a;color:#fff7ed;max-width:calc(100% - 30px);z-index:100;box-shadow:0 5px 30px #0002;font-size:13px}
 .card-enter{animation:card-in .25s ease both}

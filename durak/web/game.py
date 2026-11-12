@@ -236,4 +236,6 @@ class BrowserGame:
                     winner=self._winner() if controller.is_game_over() else None,
                     legal_cards=list(map(str, legal)), actions=actions, max_throw=limit,
                     history=self.history[:], taking=self.taking)
+        if controller.is_game_over():
+            base['luck'] = controller.luck_report()
         return base

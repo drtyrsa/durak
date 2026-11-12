@@ -17,6 +17,7 @@ Options:
 
 """
 from collections import Counter, defaultdict
+import json
 import logging
 import os.path
 import sys
@@ -25,6 +26,7 @@ from docopt import docopt
 
 from durak.controller import GameController
 from durak.engine.wrapper import EngineWrapper
+from durak.matchstats import summarize_scores
 
 
 ENGINE1 = 1
@@ -32,7 +34,7 @@ ENGINE2 = 2
 DRAW = 3
 
 
-def _play_game(engine1_path, engine2_path, log_filename=''):
+def _play_game(engine1_path, engine2_path, log_filename='', details=None):
     engine1 = EngineWrapper(engine1_path)
     engine2 = EngineWrapper(engine2_path)
     controller = GameController(
@@ -108,6 +110,9 @@ def _play_game(engine1_path, engine2_path, log_filename=''):
     engine1.game_end()
     engine2.game_end()
 
+    if details is not None:
+        details['luck'] = controller.luck_report()
+
     if controller.winner == controller.PLAYER1:
         return ENGINE1
     elif controller.winner == controller.PLAYER2:
@@ -121,6 +126,7 @@ def _do_autoplay(engine1_path, engine2_path, matches_number, match_size,
     total_games = matches_number * match_size
     game_counter = 1
     matches = []
+    score_blocks = []
     match_score = defaultdict(float)
     sys.stdout.write(
         'Playing %d matches, %d games each\n' % (matches_number, match_size)
@@ -131,7 +137,10 @@ def _do_autoplay(engine1_path, engine2_path, matches_number, match_size,
             sys.stdout.write('\r%d of %d' % (game_counter, total_games))
             sys.stdout.flush()
 
-            game_result = _play_game(engine1_path, engine2_path, log_filename)
+            details = {}
+            game_result = _play_game(engine1_path, engine2_path, log_filename, details)
+            result = 0.5 if game_result == DRAW else float(game_result == ENGINE1)
+            score_blocks.append([(result, details['luck']['total'])])
             match[game_result] += 1
             game_counter += 1
 
@@ -158,6 +167,10 @@ def _do_autoplay(engine1_path, engine2_path, matches_number, match_size,
                 index, match[ENGINE1], match[ENGINE2], match[DRAW]
             )
         )
+
+    if score_blocks:
+        sys.stdout.write('\nGame strength estimates for Engine1 (draw = half a win):\n')
+        sys.stdout.write(json.dumps(summarize_scores(score_blocks), indent=2) + '\n')
 
 
 def main():

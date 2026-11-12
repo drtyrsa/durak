@@ -39,6 +39,7 @@
         <section class="trump-info"><div><p class="eyebrow">Trump</p><h2 id="trump-name">—</h2></div><span class="trump-symbol" id="trump-symbol">♠</span></section>
         <div class="card-counters"><div><strong id="deck-count">24</strong><span>Deck</span></div><div><strong id="discard-count">0</strong><span>Discarded</span></div></div>
         <section class="score-info"><div class="section-heading"><p class="eyebrow">Score</p><span id="games-count">0 games</span></div><div class="scoreline"><div><strong id="score-you">0</strong><span>You</span></div><span class="score-divider">:</span><div><strong id="score-opponent">0</strong><span id="score-name">NextGen</span></div><div class="draw-score"><strong id="score-draw">0</strong><span>Draws</span></div></div></section>
+        <section id="luck-sidebar" class="luck-panel" aria-label="Game luck" hidden></section>
         <section class="activity-info"><p class="eyebrow">Recent moves</p><ol id="activity" aria-label="Recent moves"></ol></section>
       </aside>
     </div>
@@ -47,7 +48,7 @@
   <div id="toast" role="alert" hidden></div>
   <dialog id="rules-dialog" aria-labelledby="rules-title"><button class="dialog-close" aria-label="Close dialog"><svg class="icon"><use href="#i-close"/></svg></button><h2 id="rules-title">Rules</h2><p class="dialog-copy">The last player holding cards loses.</p><ol class="rules-list"><li><b>Attack</b><span>Lead with any card. Add cards matching a rank already on the table.</span></li><li><b>Defend</b><span>Beat each card with a higher card of the same suit, or a trump. Only a higher trump beats a trump.</span></li><li><b>End the round</b><span>After a successful defence, choose End attack. The defender attacks next. If they take, select any throw-ins and choose Done; you attack again.</span></li><li><b>Finish the game</b><span>Hands refill to six while cards remain in the deck. Once it’s empty, get rid of yours. Both players finishing on the last attack and defence is a draw.</span></li></ol><div class="rule-tip">Highlighted cards are legal to play. Gold diamonds mark trumps.</div><button class="button primary wide dialog-dismiss">Close</button></dialog>
 
-  <dialog id="result-dialog" aria-labelledby="result-title"><button class="dialog-close" aria-label="Close dialog"><svg class="icon"><use href="#i-close"/></svg></button><h2 id="result-title">Game over</h2><button class="button primary wide" id="play-again">New game</button><button class="text-button dialog-dismiss result-review">Review table</button></dialog>
+  <dialog id="result-dialog" aria-labelledby="result-title"><button class="dialog-close" aria-label="Close dialog"><svg class="icon"><use href="#i-close"/></svg></button><h2 id="result-title">Game over</h2><section id="luck-result" class="luck-panel" aria-label="Game luck" hidden></section><button class="button primary wide" id="play-again">New game</button><button class="text-button dialog-dismiss result-review">Review table</button></dialog>
   <noscript>This game needs JavaScript enabled in your browser.</noscript>
 </body>
 </html>
