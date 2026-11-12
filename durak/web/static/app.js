@@ -188,7 +188,12 @@ function renderTable() {
   deck.replaceChildren();
   if (state.deck_count > 0) {
     deck.append(makeCard(state.trump));
-    if (state.deck_count > 1) deck.append(cardBack());
+    const backs = Math.min(state.deck_count - 1, 4);
+    for (let layer = backs - 1; layer >= 0; layer--) {
+      const back = cardBack();
+      back.style.setProperty('--stack-offset', `${layer * 2}px`);
+      deck.append(back);
+    }
   } else {
     const empty = document.createElement('div');
     empty.className = 'empty-deck';
@@ -243,7 +248,7 @@ function renderTurn() {
   if (state.game_over || state.error) {
     const button = document.createElement('button');
     button.className = 'button primary';
-    button.textContent = 'New deal';
+    button.textContent = 'New game';
     button.disabled = busy || !connected;
     button.addEventListener('click', () => startNewGame());
     actions.append(button);
@@ -301,7 +306,8 @@ function render() {
   $('activity').replaceChildren();
   for (const event of state.history.slice(-3).reverse()) {
     const li = document.createElement('li');
-    li.textContent = event.text;
+    // Also update activity received from a server that is already running.
+    li.textContent = event.text.replace(/^New deal\./, 'New game.');
     if (event.cards.length) {
       const cards = document.createElement('span');
       cards.className = 'activity-cards';

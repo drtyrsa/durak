@@ -62,7 +62,7 @@ a{color:inherit}
 .deck-area .playing-card .corner .suit{font-size:11px}
 .deck-area .court-letter{font-size:28px}
 .deck-area .large-suit{font-size:32px}
-.deck-area .card-back{position:absolute;right:3px;top:0;width:58px;height:84px;box-shadow:2px 2px 0 #e3e1d7,3px 3px 0 #315243,4px 4px 0 #dadbcf,5px 5px 0 #315243,6px 6px 0 #d6d9c9,8px 9px 10px #0b342a50}
+.deck-area .card-back{position:absolute;right:3px;top:0;width:58px;height:84px;transform:translate(var(--stack-offset,0px),var(--stack-offset,0px));box-shadow:1px 2px 3px #0b342a50}
 .deck-area .back-emblem{font-size:21px}
 .deck-area .card-back:before{inset:5px}
 .empty-deck{height:84px;width:58px;position:absolute;right:3px;display:grid;place-items:center;border:1px dashed #b2c4a240;border-radius:6px;color:#cbd8b878;font:32px var(--serif)}

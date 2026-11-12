@@ -42,11 +42,11 @@ paths cannot be supplied by HTTP requests.
 - When the opponent takes, click matching cards to select your throw-ins,
   then **Done**. Click a selected card again to undo it. The server enforces
   the same throw-in limit as the wx app.
-- **New deal** immediately starts a new game with the current opponent.
+- **New game** immediately starts a new game with the current opponent.
   The previous winner goes first. The first game and games following a draw
   use the normal first-player rule.
 - Change **Opponent** in the sidebar to start a new game against another
-  engine. This selection is kept for subsequent deals.
+  engine. This selection is kept for subsequent games.
 - **Rules** opens the rules. The game-end dialog offers a
   rematch or lets you review the final table.
 
@@ -66,8 +66,8 @@ resets them. This is a local human-versus-engine game, not network multiplayer.
 path in the terminal. This uses the existing **GameLogger format**, readable
 by the wx log viewer (`durak-logviewer` → open the saved `.log` file), for
 NextGen, Dummy, and external engines alike. Snapshots are updated after every
-accepted action. New deals and server shutdown preserve unfinished games as
-interrupted games, without recording a false draw. Each new deal gets its own
+accepted action. New games and server shutdown preserve unfinished games as
+interrupted games, without recording a false draw. Each new game gets its own
 file. `--no-log` disables saving; `--log-dir` changes the directory.
 
 The usual deck, hands, table and throw-in replay data is preserved. Additional

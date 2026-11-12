@@ -82,7 +82,7 @@ class BrowserGame:
         self.taking = False
         self.history = []
         self._scored = False
-        self._record('New deal. ' + ('You start.' if self.controller.is_player1_to_move()
+        self._record('New game. ' + ('You start.' if self.controller.is_player1_to_move()
                                     else self.engines[engine_id][0] + ' starts.'))
         self.revision += 1
         if self.log_filename is not None:
