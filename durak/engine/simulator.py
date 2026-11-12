@@ -24,6 +24,7 @@ class Universe:
         self.trumps = 0x1FF << 27
         self.plain = (1 << 27) - 1
         self.full = (1 << 36) - 1
+        self.rank = [card.numeric_rank for card in self.cards]
         self.rank_mask = []  # index -> all four cards of that rank
         self.beaters = []  # index -> cards beating it
         for card in self.cards:
@@ -76,8 +77,37 @@ def _finished(hands, deck):
     return 0 if not hands[0] else 1
 
 
+def pickup(hands, deck, attacker, table, given=0):
+    """Resolve a legal pickup and refill in controller order; mutate both lists.
+
+    The attacker keeps the initiative. Return a terminal result or None.
+    Shared by rollouts and pickup reply probes so draw order cannot diverge.
+    """
+    hands[attacker] ^= given
+    hands[1 - attacker] |= table | given
+    _draw(hands, deck, 1 - attacker)
+    return _finished(hands, deck)
+
+
+def defence(u, hand, pending, table, deck_count, careful=False):
+    """A cheap defence policy using only the defender's hand and public state.
+
+    Selective pickups preserve expensive trumps while the deck is substantial.
+    A large table or an already bloated hand makes another pickup unattractive.
+    This is a continuation policy, never a restriction on legal root actions.
+    """
+    choices = hand & u.beaters[pending.bit_length() - 1]
+    card = choices & -choices
+    if (careful and deck_count > 4 and card & u.trumps
+            and (hand | table).bit_count() <= 9 and table.bit_count() <= 3):
+        if (u.rank[card.bit_length() - 1] >= 5
+                or (table.bit_count() == 1 and u.rank[pending.bit_length() - 1] >= 6)):
+            return 0
+    return card
+
+
 def rollout(u, hands, deck, attacker, table, pending, mode, forced=None, limit=2000,
-            stop_at_empty=False):
+            stop_at_empty=False, careful=0):
     """Play to the end and return the winner's seat or DRAW.
 
     ``hands`` is a two-item list of masks and ``deck`` a list of bits whose
@@ -86,7 +116,8 @@ def rollout(u, hands, deck, attacker, table, pending, mode, forced=None, limit=2
     ``forced`` is the first decision's action (a bit, a mask of throw-ins, or
     0 for stop/take/nothing); after it, both seats play the cheap policy:
     attack and throw in with the cheapest card of a matching rank, saving
-    trumps while the deck lasts, and always beat with the cheapest card.
+    trumps while the deck lasts, and beat with the cheapest card. ``careful``
+    is a seat bitmask enabling selective pickups for either simulated player.
 
     With ``stop_at_empty``, play stops at the first bout boundary with an
     empty deck and returns ``STOPPED + attacker``; ``hands`` then holds the
@@ -131,8 +162,8 @@ def rollout(u, hands, deck, attacker, table, pending, mode, forced=None, limit=2
             if forced is not None:
                 card, forced = forced, None
             else:
-                choices = hands[defender] & beaters[pending.bit_length() - 1]
-                card = choices & -choices
+                card = defence(u, hands[defender], pending, table, len(deck),
+                               careful & (1 << defender))
             if card:
                 hands[defender] ^= card
                 table |= card
@@ -152,11 +183,9 @@ def rollout(u, hands, deck, attacker, table, pending, mode, forced=None, limit=2
             elif hands[attacker]:
                 mode = GIVE
             else:
-                hands[defender] |= table
+                result = pickup(hands, deck, attacker, table)
                 table = ranks = 0
-                _draw(hands, deck, defender)
                 mode = MOVE
-                result = _finished(hands, deck)
                 if result is not None:
                     return result
                 if stop_at_empty and not deck:
@@ -175,12 +204,9 @@ def rollout(u, hands, deck, attacker, table, pending, mode, forced=None, limit=2
                     low = choices & -choices
                     choices ^= low
                     given |= low
-            hands[attacker] ^= given
-            hands[defender] |= table | given
+            result = pickup(hands, deck, attacker, table, given)
             table = ranks = 0
-            _draw(hands, deck, defender)
             mode = MOVE
-            result = _finished(hands, deck)
             if result is not None:
                 return result
             if stop_at_empty and not deck:
