@@ -4,6 +4,7 @@ from pathlib import Path
 from durak.controller import GameController
 from durak.engine.dummy import DummyEngine
 from durak.engine.nextgen import NextGenEngine
+from durak.engine.puppeteer import PuppeteerEngine
 from durak.engine.smart_runner import SmartRunnerEngine
 from durak.gamelogger.logger import new_log_filename
 from durak.engine.wrapper import EngineWrapper
@@ -21,7 +22,9 @@ class BrowserGame:
         self.engines = {
             'nextgen': ('NextGen', 'Strategic play and exact endgames.', NextGenEngine),
             'smart_runner': ('Smart Runner', 'Monte Carlo over hidden cards and exact endgames.',
-                             SmartRunnerEngine),
+                              SmartRunnerEngine),
+            'puppeteer': ('Puppeteer', 'Profiles your habits and exploits them.',
+                          PuppeteerEngine),
             'dummy': ('Dummy', 'Simple strategy.', DummyEngine),
         }
         self.default_engine = engine
@@ -63,7 +66,7 @@ class BrowserGame:
             self.controller._logger_enabled = self.log_filename is not None
             self.controller._player2.name = self.engines[engine_id][0]
             self.engine = self.engines[engine_id][2]()
-            if isinstance(self.engine, (NextGenEngine, SmartRunnerEngine)):
+            if isinstance(self.engine, (NextGenEngine, SmartRunnerEngine, PuppeteerEngine)):
                 self.engine.explain_decisions = self.log_filename is not None
             data = self.controller.start_new_game(ignore_winner=False)
             self.trump = data['trump']

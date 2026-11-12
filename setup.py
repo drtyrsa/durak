@@ -31,6 +31,7 @@ setup(
             'durak-autoplay=durak.autoplay:main',
             'durak-dummy=durak.engine.dummy:main',
             'durak-nextgen=durak.engine.nextgen:main',
+            'durak-puppeteer=durak.engine.puppeteer:main',
             'durak-play=durak.play:main',
             'durak-smart-runner=durak.engine.smart_runner:main',
             'durak-web=durak.web.server:main',

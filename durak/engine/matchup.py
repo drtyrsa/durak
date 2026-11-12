@@ -10,6 +10,7 @@ from unittest.mock import patch
 from durak.controller import GameController
 from durak.engine.dummy import DummyEngine
 from durak.engine.nextgen import NextGenEngine
+from durak.engine.puppeteer import PuppeteerEngine
 from durak.engine.smart_runner import SmartRunnerEngine
 from durak.utils.cards import DurakCard
 
@@ -57,7 +58,8 @@ def play_game(first, second, seed, timings=None):
             if engines[index]._cards != player.cards:
                 raise AssertionError('engine hand diverged from controller')
             memory = (engines[index]._memory.enemy if isinstance(engines[index], NextGenEngine)
-                      else engines[index]._enemy if isinstance(engines[index], SmartRunnerEngine)
+                      else engines[index]._enemy if isinstance(
+                          engines[index], (SmartRunnerEngine, PuppeteerEngine))
                       else None)
             if memory is not None and controller.state == 'moving':
                 enemy = (controller._player2, controller._player1)[index]
@@ -72,6 +74,7 @@ ENGINES = {
     'nextgen': NextGenEngine,
     'previous': lambda: NextGenEngine(middlegame='dummy'),  # Dummy middlegame, same endgame
     'smart_runner': SmartRunnerEngine,
+    'puppeteer': PuppeteerEngine,
     'dummy': DummyEngine,
 }
 

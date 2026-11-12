@@ -106,8 +106,29 @@ def defence(u, hand, pending, table, deck_count, careful=False):
     return card
 
 
+def _checked(u, action, hands, attacker, table, pending, mode):
+    """Validate an action mask supplied by a rollout policy hook."""
+    if not isinstance(action, int) or action < 0:
+        raise ValueError('policy hook must return a non-negative int mask or None')
+    if mode == MOVE:
+        if not action:
+            if not table:
+                raise ValueError('policy hook: cannot pass with an empty table')
+        elif (action & (action - 1) or not hands[attacker] & action
+              or table and not u.ranks(table) & action):
+            raise ValueError('policy hook: illegal attack')
+    elif mode == RESPOND:
+        if action and (action & (action - 1) or not hands[1 - attacker] & action
+                       or not u.beaters[pending.bit_length() - 1] & action):
+            raise ValueError('policy hook: illegal defence')
+    elif (action & ~hands[attacker] or action & ~u.ranks(table)
+          or action.bit_count() >= hands[1 - attacker].bit_count()):
+        raise ValueError('policy hook: illegal throw-ins')
+    return action
+
+
 def rollout(u, hands, deck, attacker, table, pending, mode, forced=None, limit=2000,
-            stop_at_empty=False, careful=0):
+            stop_at_empty=False, careful=0, policy=None):
     """Play to the end and return the winner's seat or DRAW.
 
     ``hands`` is a two-item list of masks and ``deck`` a list of bits whose
@@ -118,6 +139,12 @@ def rollout(u, hands, deck, attacker, table, pending, mode, forced=None, limit=2
     attack and throw in with the cheapest card of a matching rank, saving
     trumps while the deck lasts, and beat with the cheapest card. ``careful``
     is a seat bitmask enabling selective pickups for either simulated player.
+    ``policy``, if given, is consulted before the built-in cheap policy on
+    every decision that is not ``forced``: it receives the current state
+    ``(u, hands, deck, attacker, table, pending, mode)`` and returns an action
+    mask, or None to defer to the built-in policy. Its mover is the defender
+    in RESPOND mode and the attacker otherwise. Returned actions are
+    validated and must be legal.
 
     With ``stop_at_empty``, play stops at the first bout boundary with an
     empty deck and returns ``STOPPED + attacker``; ``hands`` then holds the
@@ -131,14 +158,20 @@ def rollout(u, hands, deck, attacker, table, pending, mode, forced=None, limit=2
             if forced is not None:
                 card, forced = forced, None
             else:
-                own = hands[attacker]
-                if not table:
-                    choices = own & plain or own
-                else:
-                    choices = own & ranks
-                    if deck:
-                        choices &= plain
-                card = choices & -choices
+                card = None
+                if policy is not None:
+                    card = policy(u, hands, deck, attacker, table, pending, MOVE)
+                    if card is not None:
+                        card = _checked(u, card, hands, attacker, table, pending, MOVE)
+                if card is None:
+                    own = hands[attacker]
+                    if not table:
+                        choices = own & plain or own
+                    else:
+                        choices = own & ranks
+                        if deck:
+                            choices &= plain
+                    card = choices & -choices
             if card:
                 hands[attacker] ^= card
                 table |= card
@@ -162,8 +195,14 @@ def rollout(u, hands, deck, attacker, table, pending, mode, forced=None, limit=2
             if forced is not None:
                 card, forced = forced, None
             else:
-                card = defence(u, hands[defender], pending, table, len(deck),
-                               careful & (1 << defender))
+                card = None
+                if policy is not None:
+                    card = policy(u, hands, deck, attacker, table, pending, RESPOND)
+                    if card is not None:
+                        card = _checked(u, card, hands, attacker, table, pending, RESPOND)
+                if card is None:
+                    card = defence(u, hands[defender], pending, table, len(deck),
+                                   careful & (1 << defender))
             if card:
                 hands[defender] ^= card
                 table |= card
@@ -194,16 +233,22 @@ def rollout(u, hands, deck, attacker, table, pending, mode, forced=None, limit=2
             if forced is not None:
                 given, forced = forced, None
             else:
-                choices = hands[attacker] & ranks
-                if deck:
-                    choices &= plain
-                given = 0
-                for _ in range(hands[defender].bit_count() - 1):
-                    if not choices:
-                        break
-                    low = choices & -choices
-                    choices ^= low
-                    given |= low
+                given = None
+                if policy is not None:
+                    given = policy(u, hands, deck, attacker, table, pending, GIVE)
+                    if given is not None:
+                        given = _checked(u, given, hands, attacker, table, pending, GIVE)
+                if given is None:
+                    choices = hands[attacker] & ranks
+                    if deck:
+                        choices &= plain
+                    given = 0
+                    for _ in range(hands[defender].bit_count() - 1):
+                        if not choices:
+                            break
+                        low = choices & -choices
+                        choices ^= low
+                        given |= low
             result = pickup(hands, deck, attacker, table, given)
             table = ranks = 0
             mode = MOVE
