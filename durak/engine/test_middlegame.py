@@ -1,6 +1,7 @@
 """Public-information boundaries and complete controller-backed games."""
 from itertools import combinations
 import json
+import os
 import subprocess
 import sys
 import unittest
@@ -55,6 +56,13 @@ class PublicInformationTest(unittest.TestCase):
             self.assertEqual(policy.probability_has({card}), 1.0)
         self.assertEqual(policy.probability_has(cards('6S')), 0.0)
 
+    def test_empty_stock_includes_the_bottom_trump_in_enemy_belief(self):
+        policy, data = position(['6C', '7C'], ['8C', '6S'], [])
+        self.assertTrue(MiddlegamePolicy.available(policy.hand, policy.trump, (), data))
+        self.assertEqual(policy.probability_has(cards('6S')), 1)
+        self.assertEqual(policy.probability_has(cards('AS')), 0)
+        policy.move()  # also exercises the analytic fallback with no stock
+
     def test_probability_increases_as_unknown_draw_cards_disappear(self):
         early, _ = position(['6C'], ['7C', '8C'], ['9C', 'TC', 'JC', '6S'])
         late, _ = position(['6C'], ['7C', '8C'], ['9C', '6S'])
@@ -106,7 +114,7 @@ class PublicInformationTest(unittest.TestCase):
 
 
 class MiddlegameIntegrationTest(unittest.TestCase):
-    def test_ace_trump_diagnostic_admits_taking_was_not_evaluated(self):
+    def test_defence_and_pickup_both_scored_in_shared_diagnostic(self):
         hand = ['6D', '8D', 'TH', 'KH', 'AD', 'AS']
         _, data = position(hand, ['7C', '9C', 'JC', 'QC', 'AC'],
                            ['7D', '9H', 'JH', 'QS', 'KS', '6S'], table=['6C'])
@@ -122,9 +130,13 @@ class MiddlegameIntegrationTest(unittest.TestCase):
         self.assertEqual(record['gamedata']['deck_count'], 6)
         self.assertIn('AS', record['hand'])  # position before the move, not afterwards
         take = next(c for c in record['candidates'] if c['action'] == 'take')
-        self.assertFalse(take['evaluated'])
+        self.assertTrue(take['evaluated'])
         self.assertFalse(take['selected'])
-        self.assertIsNone(take['score'])
+        self.assertIsInstance(take['score'], float)
+        self.assertEqual(record['model'], 'analytic_exchange')
+        self.assertIn('draws', take['if_bout_ends_now'])
+        defence = next(c for c in record['candidates'] if c['cards'] == ['AS'])
+        self.assertGreater(defence['score'], take['score'])
         self.assertEqual(record['belief']['card_probabilities']['6S'], 0)
         self.assertIsNone(engine.last_solution)
 
@@ -138,7 +150,8 @@ class MiddlegameIntegrationTest(unittest.TestCase):
             engine.init('6S')
             engine.deal(hand, data)
             outputs.append(str(engine.move([], data)))
-        self.assertEqual(outputs, ['7D', '6C'])
+        self.assertIn(outputs[0], ('7D', '7H'))  # the two plain suits are symmetric
+        self.assertEqual(outputs[1], '6C')
 
     def test_defence_avoids_exposing_a_known_enemy_rank(self):
         policy, _ = position(['7H', '8H', '9D', 'QS'], ['7C', '9C'],
@@ -146,7 +159,7 @@ class MiddlegameIntegrationTest(unittest.TestCase):
         self.assertEqual(policy.respond(), (DurakCard('8H'),))
 
     def test_keeps_cover_for_another_suit(self):
-        hand = ['8C', '8D', 'KC']
+        hand = ['8C', '8D', 'KC', 'TH', 'QS', 'AS']
         unseen = sorted(DurakCard.all() - set(map(DurakCard, hand)) - cards('6S'))
         policy, _ = position(hand, unseen[:6], unseen[6:] + [DurakCard('6S')])
         self.assertEqual(policy.move(), (DurakCard('8C'),))
@@ -160,8 +173,26 @@ class MiddlegameIntegrationTest(unittest.TestCase):
         policy, _ = position(['7S', '7C', '6D'], ['9C', '9D'],
                              ['6S', 'AC'], table=['6C', '7D', '6H'])
         self.assertEqual(policy.give_more(), (DurakCard('6D'),))
-        policy.enemy_count = 1
+        policy, _ = position(['7S', '7C', '6D'], ['9C'],
+                             ['6S', 'AC', '9D'], table=['6C', '7D', '6H'])
         self.assertEqual(policy.give_more(), ())
+
+    def test_opening_pickups_preserve_big_trumps(self):
+        for trump, attack in [('AS', '6C'), ('QS', 'QC')]:
+            hand = [trump, '6D', '7D', '8H', '9H', 'TD']
+            unseen = sorted(DurakCard.all() - cards(*hand, attack, '6S'))
+            policy, _ = position(hand, unseen[:5], unseen[5:] + [DurakCard('6S')],
+                                 table=[attack])
+            self.assertEqual(policy.respond(), ())
+
+    def test_does_not_donate_two_aces_into_an_opening_pickup(self):
+        hand, table = ['AC', 'AD', '6D', '7H', '9H'], ['AS']
+        unseen = sorted(DurakCard.all() - cards(*hand, *table, '6S'))
+        policy, _ = position(hand, unseen[:6], unseen[6:] + [DurakCard('6S')], table)
+        self.assertEqual(policy.give_more(), ())
+        candidates = policy.explain('give_more', ())['candidates']
+        self.assertEqual({tuple(c['cards']) for c in candidates}, {(), ('AC',), ('AD',)})
+        self.assertTrue(all(c['score'] < candidates[0]['score'] for c in candidates[1:]))
 
     def test_complete_games_with_public_memory_and_legal_moves(self):
         for seed in range(20):
@@ -190,3 +221,24 @@ class MiddlegameIntegrationTest(unittest.TestCase):
     def test_unknown_strategy_rejected(self):
         with self.assertRaises(ValueError):
             NextGenEngine(middlegame='random')
+
+    def test_decisions_and_explanations_are_stable_across_hash_seeds(self):
+        script = '''
+import json
+from durak.engine.test_middlegame import position, cards
+from durak.utils.cards import DurakCard
+results = []
+for hand, table, phase in [
+    (['6C', '8C', '7D', '7H', 'QS', 'AS'], [], 'move'),
+    (['AS', '6D', '7D', '8H', '9H', 'TD'], ['6C'], 'respond'),
+    (['AC', 'AD', '6D', '7H', '9H'], ['AS'], 'give_more')]:
+    unseen = sorted(DurakCard.all() - cards(*hand, *table, '6S'))
+    count = 5 if phase == 'respond' else 6
+    policy, _ = position(hand, unseen[:count], unseen[count:] + [DurakCard('6S')], table)
+    results.append(policy.explain(phase, getattr(policy, phase)()))
+print(json.dumps(results, sort_keys=True))
+'''
+        outputs = [subprocess.run([sys.executable, '-c', script], capture_output=True, text=True,
+                                  check=True, timeout=10, env={**os.environ, 'PYTHONHASHSEED': seed})
+                   for seed in ('1', '17', '777')]
+        self.assertTrue(all(p.stdout == outputs[0].stdout and not p.stderr for p in outputs))

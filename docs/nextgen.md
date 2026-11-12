@@ -27,7 +27,7 @@ Both use only the standard library. Enter cards such as `7H` or `TS`; Enter
 means stop attacking, take, or throw nothing, depending on the prompt.
 Throw-ins accept several space-separated cards. `quit` or EOF exits.
 
-`--engine` accepts the built-in names `nextgen` (the default) and `dummy`, or
+`--engine` accepts the built-in names `nextgen` (the default), `smart_runner` and `dummy`, or
 an executable name/path for any engine speaking the pyDurak protocol. Quote
 paths containing spaces. An external engine runs as a subprocess and is
 stopped when the game ends, on quit/EOF, or on error. To supply engine options,
@@ -39,29 +39,57 @@ contains only protocol responses, and EOF exits cleanly. GUI support is an
 optional install: `pip install -e '.[gui]'`. Existing GUI users can add
 `durak-nextgen` through the engine-selection dialog.
 
-## Middlegame hypotheses
+## Analytic exchange policy
 
-The default policy scores legal attacks and defences using these preferences:
+NextGen now evaluates the **hands left after an exchange**, including the refill,
+and searches a short continuation of the current bout. This is a separate
+implementation from Smart Runner: it does not import its simulator, sample
+hidden hands, or roll out complete games. It uses only the standard library.
+The existing exact endgame solver is unchanged.
 
-- **Keep trumps and useful suit cover.** Trumps receive a substantial reserve
-  value; the strongest card held in each other suit gets a smaller bonus when
-  there are still lower cards it could beat. Value also depends on printed rank
-  and the number of lower cards still unseen, rather than printed rank alone.
-- **Lead from matching ranks.** A pair or triple provides follow-up attacks;
-  occasionally leading a seven is better than an isolated six.
-- **Apply pressure where a defence is unlikely.** Estimate the chance that the
-  opponent can beat an attack in suit, or at all. This is a modest bonus, so it
-  does not override the cost of spending a valuable card.
-- **Avoid opening an enemy rank.** A defence can expose a new rank for another
-  attack. Sometimes playing an eight instead of a seven avoids a known enemy
-  seven, or a rank whose remaining cards are likely in the opposing hand.
+The hypotheses behind the assessment are:
 
-Optional attacks and throw-ins retain Dummy's conservative rule of keeping
-trumps. Defence still spends a cheap trump when needed; it does not preserve
-every trump at any cost. A trial rule that voluntarily took small attacks to
-save valuable trumps did not improve results consistently and was left out.
-The exact solver can still choose voluntary takes and trump throw-ins once
-the deck is empty.
+- **Keep useful defensive capacity.** A fractional matching assigns defenders
+  to attacks, with at most one card's worth of capacity per defender. An ace
+  cannot be counted as the answer to three separate attacks. Plain suits are
+  matched first, then trump attacks, then spare trumps against plain attacks.
+  Cover spread across several plain suits earns a small additional bonus.
+- **Protect control, especially top trumps.** Cards have a resource value based
+  on rank, remaining lower cards in plain suits, and the number of higher live
+  trumps. A trump's control premium increases as higher trumps disappear.
+- **Count both sides of a gift.** Giving an ace away removes it from our hand
+  and adds it to the opponent's resources. A pickup is not automatically an
+  opportunity to throw every matching card. Our throw-ins grow greedily only
+  while the projected exchange improves; passing is always evaluated.
+- **Make card burden matter more near the finish.** Large hands become more
+  costly as the stock shrinks. Taking competes with every legal defence, rather
+  than being forbidden whenever a beating card exists.
+- **Account for the draw order and initiative.** Each leaf projects refill
+  counts, which player receives the face-up trump, and who attacks next. It
+  follows this controller's rules: the original attacker draws first after a
+  successful defence, but the defender draws first after a pickup.
+
+`hand_value.py` contains the hand assessment; `exchange.py` contains the bout
+search and refill projection. The score sums resource difference, hand burden,
+defensive coverage, suit cover and initiative. These weights express strategic
+hypotheses, not solved game values or win probabilities.
+
+Every legal root attack and defence is scored, as are taking and stopping when
+legal. After our attack, all possible first beating cards are considered, along
+with a voluntary enemy pickup. Search extends through one further attack: up to
+four cheap unknown replies plus every known reply, and up to three of our own
+matching follow-ups. For our pickup, all legal subsets of up to four shortlisted
+matching enemy cards are considered, weighted by exact hypergeometric presence
+probabilities. The opponent is modeled as choosing the worst available option
+for us. This does not assume that taking proves an inability to defend.
+
+Leaves use analytic marginal card weights after the refill. This keeps decisions
+fast and deterministic, but assessing a fractional hand is **not** the same as
+averaging assessments of every possible real hand. Dependencies between cards,
+longer combinations, omitted follow-ups and opponents with different preferences
+remain limitations. The policy also handles larger empty-stock positions if the
+exact solver reaches its card or node limit; those decisions are marked `smart`,
+not `exact`.
 
 ### What can the opponent hold?
 
@@ -85,39 +113,51 @@ The model uses no actual hidden hand or deck order. It does not treat taking as
 proof of a missing suit: an opponent may take voluntarily. The uniform prior
 does not yet learn opponents' preferences from their choices.
 
-### Reproduce the comparison
+### Headless comparison
 
 `durak.engine.matchup` uses the real controller and the normal engine methods,
 checks legality, hand synchronization and remembered cards, and plays every
-seeded deal twice with the engine seats swapped. The `previous` opponent is
-NextGen with Dummy's middlegame **and the same exact solver and search budget**;
-this separates middlegame improvements from the existing endgame advantage.
+seeded deal twice with the engine seats swapped:
 
-After exploratory trials on seeds 0–99 and validation on 1000–1499, the final
-policy was evaluated on separate deals starting at seed 10000:
+```sh
+python3 -m durak.engine.matchup --engine nextgen --opponent smart_runner --pairs 50 --seed 120000
+python3 -m durak.engine.matchup --engine nextgen --opponent dummy --pairs 100 --seed 130000
+```
 
-| Opponent | Games | NextGen wins | Losses | Draws | Score (draw = half) |
-| --- | ---: | ---: | ---: | ---: | ---: |
-| Previous NextGen | 2,000 | 982 | 908 | 110 | 51.85% |
-| Dummy | 1,000 | 665 | 258 | 77 | 70.35% |
+The analytic exchange policy was developed on deals 100000–100099, with an
+initial Smart Runner check on 101000–101019. The final policy was then tested on
+separate deals, using default settings for every engine:
 
-The Dummy row includes the endgame tie-break described under *Why exact
-search terminates*; with `swindle_depth=0` the same deals give 622 / 309 / 69
-(65.65%). The previous-NextGen row predates the tie-break, which both sides
-of that comparison now share.
+| Opponent | Deal seeds | Games | NextGen wins | Losses | Draws | Score (draw = half) |
+| --- | --- | ---: | ---: | ---: | ---: | ---: |
+| Frozen old NextGen | 110000–110499 | 1,000 | 593 | 373 | 34 | 61.0% |
+| Smart Runner | 120000–120049 | 100 | 44 | 51 | 5 | 46.5% |
 
-The improvement over previous NextGen is modest in this sample; this is a
-starting policy, not evidence of universally strong or optimal play. On this
-machine with CPython 3.12, the new engine's middlegame decisions took about
-0.23–0.25 ms median and at most 1.3 ms in these runs. Exact endgame searches have
-their separate budget and timing characteristics below. There are no random
-rollouts or new dependencies in the middlegame policy.
+The old NextGen was frozen from commit
+`0a4c03ace6d7aba5e469fb84830d7d281282f768`, including its original middlegame
+policy. Both NextGen versions used the same exact solver, 12-card threshold,
+500,000-node budget and swindle depth 3. The new policy also replaces Dummy as
+the fallback when exact search exceeds its budget. Smart Runner used its default
+2,048 worlds and policy revision 3; its implementation was not modified.
 
-For a baseline engine process, run `durak-nextgen --middlegame dummy`, or create
-`NextGenEngine(middlegame='dummy')` in Python. The default is `smart`; terminal,
-web, autoplay and GUI clients all get it without changing the protocol. The
-paired benchmark runs in process, while `durak-autoplay` still exercises actual
-engine subprocesses.
+This is evidence of improvement over old NextGen, **not** evidence that it is
+stronger than Smart Runner. In these concurrent benchmark runs on CPython 3.12,
+NextGen's stock-present decisions took roughly 6–7 ms median and 42–43 ms at the
+95th percentile; the slowest was 203 ms. Exact searches have a separate budget.
+Timings depend on the machine and concurrent load.
+
+The existing `--opponent previous` benchmark name still means **Dummy middlegame
+plus the exact solver**, not the frozen old smart policy in the table above.
+`durak-nextgen --middlegame dummy` retains that original baseline. The default
+`smart` option now selects the analytic exchange policy; terminal, web, autoplay
+and GUI clients receive it through the unchanged protocol.
+
+Tests independently check defensive matching against exhaustive assignments,
+refill marginals against every hidden allocation in small controller positions,
+reply probabilities, joint throw-ins, public-information boundaries, hash-seed
+stability, and complete games. Regression positions cover saving big trumps,
+retaining aces during an enemy pickup, spending a cheap trump when appropriate,
+and preserving useful suit cover.
 
 ## Inspect a questionable move
 
@@ -135,18 +175,27 @@ python3 -m durak.gamelogger matches.log --game 2 --action 17
 
 Built-in NextGen in web/terminal games with logging enabled supplies the extra
 analysis. It records the hand **before** playing, the table, deck/opponent counts,
-discard pile, remembered cards, candidate cost components and belief estimates.
+discard pile, remembered cards, candidate scores and belief estimates.
+Analytic decisions identify `model: analytic_exchange` and `policy_revision: 1`.
+`if_bout_ends_now` breaks an immediate exchange into resource, burden, coverage,
+suit-cover and initiative components, including refill counts and `face_up_to`.
+Defence candidates also show `continuation_adjustment` for the modeled extra
+attack or throw-ins. Attack candidates show `if_enemy_takes` and the planned
+`pickup_throw_ins`; that conditional value is not the whole attack score.
+The `search` object records the bounds, and `leaf_evaluations` records the work.
+Throw-in candidates are the subsets actually evaluated by the greedy search,
+including rejected additions, rather than a claim to have scored all subsets.
 Exact decisions report the solved outcome and search nodes, plus
 `expected_vs_random` when a lost or drawn position needed a tie-break. External engines
 use the unchanged card-only protocol, so their logs contain full game/position
 data without internal explanations.
 
-A high trump defending a low card while six cards remain in the deck is a
-useful example of the current policy's limitation: it scores beating cards but
-does **not** score voluntarily taking. If an ace trump is the only beating card,
-it plays that ace. The log explicitly lists taking as legal but unevaluated;
-it does not claim that taking was worse or invent a winning continuation.
-Middlegame scores are heuristic costs (lower is preferred), not win chances.
+Taking is now scored even when a beating card exists. If a high trump defends
+a low card, compare its candidate score with the take score and inspect the
+refill and continuation terms. Neither a resource premium nor a penalty is an
+absolute prohibition. Middlegame scores prefer **higher** values; old logs from
+the previous policy used costs where lower was preferred. Each record states
+its own `score_convention`.
 
 For programmatic inspection, use `NextGenEngine(explain_decisions=True)` and
 read `last_decision` after a move. Producing explanations does not change move
@@ -275,7 +324,8 @@ Defaults: **12 total live cards**, including the table, and **500,000 uncached
 positions per decision**, including tie-break work in lost/drawn positions.
 The cache also holds at most 500,000 entries (see *Cache* for eviction). These
 are work/memory guards, not a wall-clock deadline. Above either limit NextGen
-uses DummyEngine for that decision, so that decision has no optimality claim.
+uses the analytic exchange policy, so that decision has no optimality claim.
+The explicit `--middlegame dummy` baseline still uses Dummy in this situation.
 Later decisions retry as the position becomes smaller or cached work helps.
 An interrupted search never records an approximate value as an exact result.
 

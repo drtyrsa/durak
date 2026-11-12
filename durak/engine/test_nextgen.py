@@ -353,13 +353,15 @@ class NextGenTest(unittest.TestCase):
     def test_card_and_node_limits_fall_back_without_mutating_hand_during_search(self):
         controller = game(['6C', '8C'], ['7C', '9C'])
         for options in ({'max_cards': 2}, {'max_nodes': 1}):
-            engine = NextGenEngine(**options)
+            engine = NextGenEngine(explain_decisions=True, **options)
             engine.init('6S')
             engine.deal(['6C', '8C'], {})
-            self.assertEqual(str(engine.move([], controller.get_game_data_for(controller.PLAYER1))), '6C')
-            self.assertEqual(engine._cards, {DurakCard('8C')})
+            played = DurakCard(str(engine.move([], controller.get_game_data_for(controller.PLAYER1))))
+            self.assertIn(played, controller._player1.cards)
+            self.assertEqual(engine._cards, controller._player1.cards - {played})
             self.assertIsNone(engine.last_solution)
             self.assertIn('reached', engine.fallback_reason)
+            self.assertEqual(engine.last_decision['model'], 'analytic_exchange')
 
     def test_new_game_resets_solver(self):
         engine = NextGenEngine()
