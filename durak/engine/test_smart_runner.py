@@ -119,26 +119,9 @@ class SimulatorTest(unittest.TestCase):
         self.assertEqual(endings, {'player1', 'player2', None})
 
 
-def matchable(slots, cards):
-    """Can every unknown slot hold a distinct real card it does not forbid?"""
-    owner = {}
-
-    def assign(slot, tried):
-        for card in cards:
-            if not slots[slot] & card and card not in tried:
-                tried.add(card)
-                if card not in owner or assign(owner[card], tried):
-                    owner[card] = slot
-                    return True
-        return False
-
-    return len(slots) == len(cards) and all(assign(i, set()) for i in range(len(slots)))
-
-
 class TrackingTest(unittest.TestCase):
-    def test_known_cards_and_take_inference_are_never_wrong(self):
-        # Dummy beats whenever it can, so every inferred constraint must hold.
-        learned = constrained = 0
+    def test_known_opponent_cards_match_real_hands(self):
+        learned = 0
         for seed in range(30):
             controller = GameController()
             controller._logger_enabled = False
@@ -173,12 +156,32 @@ class TrackingTest(unittest.TestCase):
                 known = engine._enemy - set(controller.on_table)
                 self.assertLessEqual(known, enemy, seed)
                 learned = max(learned, len(known))
-                if not controller.is_game_over() and controller.deck_count:
-                    unknown = [engine._universe.bit[c] for c in enemy - engine._enemy]
-                    self.assertTrue(matchable(engine._slots, unknown), seed)
-                    constrained += any(engine._slots)
         self.assertGreater(learned, 0)
-        self.assertGreater(constrained, 0)
+
+    def test_taking_keeps_beating_cards_possible_and_remembers_pickup(self):
+        engine = SmartRunnerEngine(worlds=64, leaf_deck=0, race=False)
+        engine.init('6S')
+        data = {'enemy_count': 6, 'deck_count': 24, 'discarded': []}
+        # We attacked with 6C; the opponent takes, possibly while holding AC.
+        engine.deal(['6D', '8H', '9D', 'JH', 'QD'], data)
+        sampled_hands = []
+
+        def sample(u, hands, *args, **kwargs):
+            sampled_hands.append(u.unpack(hands[1]))
+            return -1  # equal outcomes: no throw-ins, independent of rollout policy
+
+        with patch('durak.engine.smart_runner.rollout', side_effect=sample):
+            self.assertEqual(engine.give_more(['6C'], data), '')
+        self.assertTrue(any(DurakCard('AC') in hand for hand in sampled_hands))
+
+        data = dict(data, enemy_count=7, deck_count=23)
+        engine.deal(['7D'], data)
+        self.assertEqual(engine._enemy, {DurakCard('6C')})
+        sampled_hands.clear()
+        with patch('durak.engine.smart_runner.rollout', side_effect=sample):
+            engine.move([], data)
+        self.assertTrue(any(DurakCard('AC') in hand for hand in sampled_hands))
+        self.assertTrue(all(DurakCard('6C') in hand for hand in sampled_hands))
 
 
 class EngineTest(unittest.TestCase):
@@ -201,8 +204,6 @@ class EngineTest(unittest.TestCase):
             strategies.add(engine.last_decision['strategy'])
             if engine.last_decision.get('exact_worlds'):
                 strategies.add('exact_leaves')
-            if engine.last_decision.get('constrained_worlds'):
-                strategies.add('constrained')
             if any(c['worlds'] < engine.last_decision['worlds']
                    for c in engine.last_decision.get('candidates', ())):
                 strategies.add('raced')

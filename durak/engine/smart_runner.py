@@ -33,13 +33,11 @@ class SmartRunnerEngine(DummyEngine):
       when the sampled deck runs out and the exact solver scores the
       position (``leaf_worlds`` worlds, ``leaf_nodes`` per leaf, ``leaf_budget``
       per decision). 0 disables exact leaves.
-    - ``infer_takes``: treat the opponent's takes as evidence that it held no
-      card able to beat the attack (true for Dummy and NextGen).
     """
 
     def __init__(self, worlds=2048, max_cards=12, max_nodes=500_000, swindle_depth=3,
                  seed=0, explain_decisions=False, leaf_deck=4, leaf_worlds=128,
-                 leaf_nodes=5_000, leaf_budget=150_000, infer_takes=True,
+                 leaf_nodes=5_000, leaf_budget=150_000,
                  race=True, min_worlds=128, batch=64, z=3.0):
         if worlds < 1 or min_worlds < 2 or batch < 1 or leaf_worlds < 1:
             raise ValueError('worlds, leaf_worlds and batch must be positive; min_worlds >= 2')
@@ -58,7 +56,6 @@ class SmartRunnerEngine(DummyEngine):
         self.leaf_worlds = leaf_worlds
         self.leaf_nodes = leaf_nodes
         self.leaf_budget = leaf_budget
-        self.infer_takes = infer_takes
         self.race = race
         self.min_worlds = min_worlds
         self.batch = batch
@@ -72,30 +69,12 @@ class SmartRunnerEngine(DummyEngine):
         self._universe = Universe(trump)
         self._enemy = set()  # cards the opponent is known to hold
         self._seen = set()  # last observed table plus our later plays
-        self._public = set()  # table and discards at the last observation
-        self._deck_count = None  # at the last observation
-        # One entry per unknown opponent card: a mask of cards it cannot be,
-        # learned from takes (see _record_take).
-        self._slots = []
         self._solver = None
         self.last_decision = None
         return result
 
     def deal(self, cards, gamedata):
-        received = set(map(DurakCard, cards))
-        unseen = len(received - self._seen)
-        hand = len(self._cards) + len(received & self._seen)  # after any pickup
         result = super().deal(cards, gamedata)
-        if unseen and self._deck_count:
-            # Unseen cards are our draws or the opponent's throw-ins after our
-            # take. We draw first, up to six, so the split is determined.
-            for thrown in range(unseen + 1):
-                if unseen - thrown == min(max(0, 6 - hand - thrown), self._deck_count):
-                    break
-            else:
-                thrown = 0
-            for _ in range(min(thrown, len(self._slots))):
-                self._slots.remove(max(self._slots, key=int.bit_count))
         self._enemy.difference_update(self._cards)
         self._observe((), gamedata)
         return result
@@ -116,58 +95,20 @@ class SmartRunnerEngine(DummyEngine):
 
         A card we saw on the table that is now neither on it, discarded, nor
         in our hand was picked up by the opponent (this includes our own
-        throw-ins). Cards the opponent plays become public again.
+        throw-ins). Cards the opponent plays become public again. Taking may
+        be voluntary, so it tells us nothing certain about their other cards.
         """
         if 'discarded' not in gamedata:
             return
         table = set(map(DurakCard, table))
         discarded = set(map(DurakCard, gamedata['discarded']))
         public = table | discarded
-        # Cards the opponent played since the last observation; previously
-        # unknown ones each used up one of the unknown slots.
-        for card in sorted(public - self._public - self._seen - self._enemy):
-            self._spend_slot(self._universe.bit[card])
         self._enemy |= self._seen - public - self._cards
         self._enemy -= public | self._cards
         enemy_count = gamedata.get('enemy_count', len(self._enemy))
         if len(self._enemy) > enemy_count:
-            self._enemy, self._slots = set(), []  # inconsistent: forget, don't guess
-        target = enemy_count - len(self._enemy)
-        while len(self._slots) > max(target, 0):
-            # An unknown card left unseen: drop the most constrained slot,
-            # sound for the reason given in _spend_slot.
-            self._slots.remove(max(self._slots, key=int.bit_count))
-        self._slots += [0] * (target - len(self._slots))  # fresh draws are unconstrained
-        self._seen, self._public = table, public
-        self._deck_count = gamedata.get('deck_count')
-
-    def _spend_slot(self, bit):
-        """Remove the most constrained slot that could have held ``bit``.
-
-        Forbidden sets form a chain (a slot held during more takes forbids a
-        superset), so this is always sound: whatever card really occupied the
-        removed slot also satisfies the weaker slot that remains instead.
-        """
-        if not self._slots:
-            return
-        fits = [i for i, forbidden in enumerate(self._slots) if not forbidden & bit]
-        if not fits:  # contradiction: the opponent does take voluntarily
-            self._slots = [0] * len(self._slots)
-            fits = range(len(self._slots))
-        del self._slots[max(fits, key=lambda i: self._slots[i].bit_count())]
-
-    def _record_take(self, attack):
-        """The opponent took ``attack``: assume no unknown card could beat it.
-
-        Dummy-like opponents (and NextGen) beat whenever they can, so a take
-        while the deck lasts says which cards they did not hold. If a known
-        card could have beaten it, the take was voluntary and teaches nothing.
-        """
-        u = self._universe
-        beaters = u.beaters[u.bit[attack].bit_length() - 1]
-        if u.mask(self._enemy) & beaters:
-            return
-        self._slots = [forbidden | beaters for forbidden in self._slots]
+            self._enemy = set()  # inconsistent: forget, don't guess
+        self._seen = table
 
     def _hidden(self, table, gamedata):
         """Return (unknown cards, opponent slots to fill), or None if inconsistent."""
@@ -190,8 +131,6 @@ class SmartRunnerEngine(DummyEngine):
         started = perf_counter()
         table = list(map(DurakCard, on_table))
         self._observe(table, gamedata)
-        if phase == 'give_more' and self.infer_takes:
-            self._record_take(table[-1])
         hand_before = sorted(self._cards)
         info = {}
         cards = None
@@ -245,32 +184,6 @@ class SmartRunnerEngine(DummyEngine):
                     continue
             keep.append(index)
         return keep
-
-    @staticmethod
-    def _fill(pool, slots, constraints):
-        """Opponent cards from a shuffled pool respecting slot constraints.
-
-        Most constrained slots pick first; returns None if this shuffle
-        cannot satisfy them all (the caller then ignores the constraints).
-        """
-        if not constraints:
-            return pool[:slots]
-        hand, used = [], 0
-        for forbidden in constraints:
-            for bit in pool:
-                if not bit & (forbidden | used):
-                    break
-            else:
-                return None
-            hand.append(bit)
-            used |= bit
-        for bit in pool:
-            if len(hand) == slots:
-                break
-            if not bit & used:
-                hand.append(bit)
-                used |= bit
-        return hand
 
     def _leaf(self, solver, hands, attacker):
         """Exact result of a sampled world once its deck is empty."""
@@ -333,20 +246,15 @@ class SmartRunnerEngine(DummyEngine):
         results = [[] for _ in candidates]  # per-world outcome, shared worlds
         active = list(range(len(candidates)))
         budget, exact_worlds = self.leaf_budget, 0
-        constraints = sorted((f for f in self._slots if f), key=int.bit_count, reverse=True)
-        constrained_worlds = done = 0
+        done = 0
         batch = self.batch if self.race else worlds
         while done < worlds and len(active) > 1:
             for _ in range(min(batch, worlds - done)):
                 done += 1
                 rng.shuffle(pool)
-                hand = self._fill(pool, slots, constraints)
-                constrained_worlds += hand is not None
-                if hand is None:
-                    hand = pool[:slots]
+                hand = pool[:slots]
                 enemy = known | sum(hand)
-                chosen = set(hand)
-                deck = ([bottom] if bottom else []) + [b for b in pool if b not in chosen]
+                deck = ([bottom] if bottom else []) + pool[slots:]
                 # Exact leaves per whole world, so all candidates are judged alike.
                 solver = None
                 if exact_leaves and budget > 0:
@@ -366,8 +274,7 @@ class SmartRunnerEngine(DummyEngine):
                 active = self._race(active, results)
         mean = [sum(r) / len(r) if r else 0 for r in results]
         best = max(active, key=lambda i: (mean[i], -i))
-        info.update(strategy='monte_carlo', worlds=done, exact_worlds=exact_worlds,
-                    constrained_worlds=constrained_worlds if constraints else None, candidates=[
+        info.update(strategy='monte_carlo', worlds=done, exact_worlds=exact_worlds, candidates=[
             {'cards': list(map(str, u.unpack(c))), 'score': mean[i], 'worlds': len(results[i])}
             for i, c in enumerate(candidates)])
         return u.unpack(candidates[best])
@@ -382,8 +289,6 @@ def main():
     parser.add_argument('--leaf-deck', type=int, default=4,
                         help='score rollouts exactly once the deck has at most this many '
                              'cards (default: 4; 0: off)')
-    parser.add_argument('--no-infer-takes', action='store_true',
-                        help='do not assume the opponent takes only when it cannot beat')
     parser.add_argument('--max-cards', type=int, default=12,
                         help='maximum live cards for the exact endgame (default: 12)')
     parser.add_argument('--max-nodes', type=int, default=500_000,
@@ -391,8 +296,7 @@ def main():
     args = parser.parse_args()
     try:
         engine = SmartRunnerEngine(args.worlds, args.max_cards, args.max_nodes or None,
-                                   leaf_deck=args.leaf_deck, infer_takes=not args.no_infer_takes,
-                                   race=not args.no_race)
+                                   leaf_deck=args.leaf_deck, race=not args.no_race)
     except ValueError as error:
         parser.error(str(error))
     engine.run()
