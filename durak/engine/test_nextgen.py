@@ -188,6 +188,39 @@ class SolverTest(unittest.TestCase):
         result = solver.solve(['6C', '8C'], ['7C', '9C'])
         self.assertIn(result.outcome, (-1, 0, 1))
 
+    def test_cached_outcomes_require_a_proof_and_include_draws(self):
+        solver = EndgameSolver(['6C', '7C', '8C', '9C'], '6S', max_nodes=1,
+                               swindle_depth=0, cache_size=100)
+        hands = (['6C', '8C'], ['7C', '9C'])
+        with self.assertRaises(SearchLimitReached):
+            solver.solve(*hands)
+        self.assertIsNone(solver.cached_outcome(*hands))
+        solver.max_nodes = 100
+        expected = solver.solve(*hands).outcome
+        solver.max_nodes = 1
+        nodes = solver.nodes
+        self.assertEqual(solver.cached_outcome(*hands), expected)
+        self.assertEqual(solver.nodes, nodes)
+        solver.max_nodes = 100
+        self.assertEqual(solver.solve(['6C'], ['7C']).outcome, 0)
+        self.assertEqual(solver.cached_outcome(['6C'], ['7C']), 0)
+        self.assertEqual(solver.cached_outcome([], []), 0)
+        self.assertEqual(solver.cached_outcome([], ['7C']), 1)
+        self.assertEqual(solver.cached_outcome(['6C'], []), -1)
+
+    def test_cache_capacity_is_independent_of_search_budget(self):
+        cards = ['6C', '7C', '8C', '9C', 'TD', 'JS']
+        expected = EndgameSolver(cards, '6S', swindle_depth=0).solve(cards[:3], cards[3:])
+        for capacity in (1, 5, 1000):
+            solver = EndgameSolver(cards, '6S', max_nodes=1000, swindle_depth=0,
+                                   cache_size=capacity)
+            result = solver.solve(cards[:3], cards[3:])
+            self.assertEqual(result.outcome, expected.outcome)
+            self.assertLessEqual(len(solver.table), capacity)
+            solver.max_nodes = 1
+            self.assertEqual(solver.solve(cards[:3], cards[3:]).outcome, expected.outcome)
+            self.assertEqual(solver.nodes, 0)
+
     def test_full_table_never_does_worse_than_a_fresh_solver(self):
         # A full table used to stop caching, so a long-lived solver ran out
         # of budget on positions that a fresh solver solved.

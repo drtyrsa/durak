@@ -341,16 +341,16 @@ class GameController(object):
         self._on_table.clear()
         self._state = self.States.MOVING
 
+        if self._luck is not None:
+            attacker = 0 if self._to_move is self._player1 else 1
+            self._luck.observe_refills(self._player1.cards, self._player2.cards,
+                                       self._deck, (1 - attacker, attacker), attacker)
         for player in (self._to_respond, self._to_move):
             if not self._deck:
                 break
 
             cards_needed = 6 - len(player.cards)
             if cards_needed > 0:
-                if self._luck is not None:
-                    self._luck.observe_refill(
-                        0 if player is self._player1 else 1,
-                        self._player1.cards, self._player2.cards, self._deck, cards_needed)
                 player.cards.update(self._deck[:cards_needed])
                 self._deck = self._deck[cards_needed:]
 

@@ -270,10 +270,10 @@ function renderTurn() {
 }
 
 // Fixed, outcome-independent display reference; see docs/luck.md.
-// Default Smart Runner vs Dummy, seeds 202613000–202613099, both engine seats.
+// Smart Runner revision 3 vs Dummy, seeds 202613000–202613099, both engine seats.
 // Each game contributes +|luck| and -|luck|; 200 games, 100 independent deals.
 // Sorted magnitudes are rounded to 9 decimal places. Never used for match scores.
-const luckReference = Object.freeze({
+const luckReferenceV1 = Object.freeze({
   id: 'chance-v1-sr-dummy-202613000-100',
   model: 'chance-v1',
   games: 200,
@@ -306,8 +306,49 @@ const luckReference = Object.freeze({
   ]),
 });
 
+// Revision 3 actions replayed with chance-v2; outcomes never enter calibration.
+// Seeds 202614000–202614099, both seats. The legacy reference stays unchanged.
+const luckReferenceV2 = Object.freeze({
+  id: 'chance-v2-sr3-dummy-202614000-100',
+  model: 'chance-v2',
+  games: 200,
+  magnitudes: Object.freeze([
+    0.000169324, 0.000349060, 0.001095464, 0.003701619, 0.005386724, 0.006891911, 0.009174498, 0.011671046,
+    0.011958585, 0.012445538, 0.013452167, 0.013996441, 0.014211737, 0.015623388, 0.016305704, 0.016808228,
+    0.018618479, 0.021127136, 0.021215569, 0.022209692, 0.022474700, 0.023221544, 0.024116924, 0.024298469,
+    0.024919241, 0.025059300, 0.027908055, 0.028151078, 0.028818903, 0.028969584, 0.030458982, 0.031194276,
+    0.032861041, 0.033186718, 0.033226417, 0.033267033, 0.035442640, 0.035580691, 0.037845865, 0.038934837,
+    0.039641688, 0.040179044, 0.040345165, 0.040770569, 0.041489887, 0.041957015, 0.043178276, 0.045682162,
+    0.045776033, 0.046060940, 0.046334603, 0.048670484, 0.049898390, 0.050227659, 0.050314205, 0.050634857,
+    0.052943820, 0.054704860, 0.055240233, 0.055318748, 0.055512021, 0.057690223, 0.058991906, 0.059276847,
+    0.062205179, 0.065737492, 0.066488381, 0.067469807, 0.067835579, 0.068136484, 0.069111355, 0.074152897,
+    0.074421328, 0.078117331, 0.078215514, 0.080044360, 0.081031871, 0.081234941, 0.081958049, 0.082505084,
+    0.083202479, 0.083848032, 0.084707375, 0.085238608, 0.086698529, 0.086776676, 0.087958471, 0.089445117,
+    0.089777121, 0.090764737, 0.091593793, 0.093128554, 0.093151542, 0.093754029, 0.096228288, 0.096323716,
+    0.099375216, 0.101902312, 0.104997952, 0.107835917, 0.108935110, 0.109102435, 0.112550149, 0.113025176,
+    0.114212122, 0.117936287, 0.118351693, 0.120381675, 0.120687881, 0.123489738, 0.123651325, 0.124584412,
+    0.125043747, 0.125535684, 0.125729781, 0.126247887, 0.128195981, 0.128207884, 0.129994139, 0.134993265,
+    0.137007211, 0.138074925, 0.138728806, 0.141204840, 0.141401249, 0.141478171, 0.148259926, 0.149085149,
+    0.153263816, 0.154507068, 0.156377946, 0.158542538, 0.160143499, 0.160362365, 0.161597461, 0.164911588,
+    0.166963198, 0.167036065, 0.167649135, 0.175480058, 0.180146903, 0.184794709, 0.185556300, 0.186722288,
+    0.190635725, 0.191288866, 0.191975073, 0.195000722, 0.195111138, 0.200768648, 0.202833157, 0.204452267,
+    0.208969173, 0.209182594, 0.211632763, 0.212574977, 0.216340683, 0.216351744, 0.216857496, 0.219069390,
+    0.219383104, 0.221694203, 0.222442582, 0.222732336, 0.224089958, 0.224592421, 0.225355311, 0.225939191,
+    0.226137834, 0.226834001, 0.240635994, 0.247385704, 0.247388124, 0.248915077, 0.252185001, 0.261972374,
+    0.262011412, 0.265451399, 0.273178728, 0.273180048, 0.276321206, 0.278653909, 0.287276117, 0.287539463,
+    0.296871406, 0.302033637, 0.308158570, 0.309504662, 0.314667410, 0.317260155, 0.340570733, 0.344404218,
+    0.345150291, 0.358143308, 0.361815826, 0.364766587, 0.386856271, 0.464125428, 0.530290165, 0.598207495,
+  ]),
+});
+const luckReferences = Object.freeze({
+  'chance-v1': luckReferenceV1,
+  'chance-v2': luckReferenceV2,
+});
+
 function luckPresentation(luck) {
-  if (!luck || luck.model !== luckReference.model || !Number.isFinite(luck.total)) return null;
+  if (!luck || !Number.isFinite(luck.total)) return null;
+  if (!Object.prototype.hasOwnProperty.call(luckReferences, luck.model)) return null;
+  const luckReference = luckReferences[luck.model];
   let below = 0;
   let equal = 0;
   for (const magnitude of luckReference.magnitudes) {
@@ -327,7 +368,7 @@ function luckPresentation(luck) {
     const label = percentile <= 10 ? 'Very unlucky' : 'Unlucky';
     verdict = `${label} — bottom ${Math.ceil(percentile)}%`;
   }
-  return {percentile, verdict};
+  return {percentile, verdict, reference: luckReference.id, games: luckReference.games};
 }
 
 function renderLuck() {
@@ -375,6 +416,9 @@ function renderLuck() {
       ['answers', 'Cheap answers'], ['pairs', 'Pairs & sets'], ['suits', 'Suit coverage']]) {
       entries.push([name, luck.components[key]]);
     }
+    if (Number.isFinite(luck.components.endgame)) {
+      entries.push(['Endgame draws', luck.components.endgame]);
+    }
     for (const [name, value] of entries) {
       const term = document.createElement('dt');
       term.textContent = name;
@@ -384,7 +428,10 @@ function renderLuck() {
     }
     const note = document.createElement('p');
     note.className = 'luck-note';
-    note.textContent = `Compared with both players in ${luckReference.games} Smart Runner–Dummy games. Starting hands and unexpected draws count; pickups and the visible trump don’t. This isn’t a win probability.`;
+    note.textContent = `Compared with both players in ${presentation.games} Smart Runner–Dummy games. Starting hands and unexpected draws count; pickups and the visible trump don’t. This isn’t a win probability.`;
+    if (luck.model === 'chance-v2') {
+      note.textContent += ' Last draws are judged by the resulting endgame, including who attacks next.';
+    }
     breakdown.append(summary, rows, note);
     panel.append(title, verdict, meter, track, labels);
     if (state.winner === 'you' && presentation.percentile <= 40) {

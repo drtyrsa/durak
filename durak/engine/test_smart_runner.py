@@ -9,7 +9,7 @@ from durak.engine.dummy import DummyEngine
 from durak.engine.matchup import DealRandom, play_game
 from durak.engine.nextgen import NextGenEngine
 from durak.engine.simulator import GIVE, MOVE, RESPOND, STOPPED, Universe, defence, pickup, rollout
-from durak.engine.smart_runner import SmartRunnerEngine
+from durak.engine.smart_runner import SmartRunnerEngine, _LeafSearch, _LeafValue, _Prediction
 from durak.engine.test_nextgen import game
 from durak.utils.cards import CardSet, DurakCard
 
@@ -230,7 +230,127 @@ class TrackingTest(unittest.TestCase):
         self.assertTrue(all(DurakCard('6C') in hand for hand in sampled_hands))
 
 
+class SharedLeafTest(unittest.TestCase):
+    def test_enumeration_covers_each_hidden_arrangement_and_both_styles(self):
+        pool, known, bottom = [1 << i for i in range(7)], 1 << 7, 1 << 8
+        schedule, trials, possible, complete = SmartRunnerEngine._worlds(
+            pool, 5, known, bottom, 128, Random(9), True)
+        rows = list(schedule)
+        self.assertEqual((len(rows), trials, possible, complete), (84, 84, 42, True))
+        arrangements = {}
+        for enemy, deck, careful, reply_weight in rows:
+            self.assertEqual(enemy.bit_count(), 6)
+            self.assertTrue(enemy & known)
+            self.assertEqual(deck[0], bottom)
+            self.assertEqual(enemy & sum(deck), 0)
+            self.assertEqual(enemy | sum(deck), sum(pool) | known | bottom)
+            arrangements.setdefault((enemy, tuple(deck)), []).append((careful, reply_weight))
+        self.assertEqual(len(arrangements), 42)
+        self.assertTrue(all(styles == [(3, 0), (0, .5)] for styles in arrangements.values()))
+        self.assertEqual(sum(row[3] for row in rows) / len(rows), .25)
+        again, *_ = SmartRunnerEngine._worlds(pool, 5, known, bottom, 128, Random(9), True)
+        self.assertEqual(rows, list(again))
+
+    def test_large_world_sets_still_sample_with_original_policy_weights(self):
+        for limit, enabled in ((83, True), (128, False)):
+            schedule, trials, possible, complete = SmartRunnerEngine._worlds(
+                [1 << i for i in range(7)], 5, 128, 256, limit, Random(9), enabled)
+            rows = list(schedule)
+            self.assertEqual((trials, possible, complete), (limit, 42, False))
+            self.assertEqual(len(rows), limit)
+            self.assertEqual([r[2:] for r in rows[:4]], [(3, 0), (0, 0), (3, 0), (0, 1)])
+
+    def test_complete_world_scores_do_not_use_sampling_uncertainty_tie_break(self):
+        engine = SmartRunnerEngine()
+        values = [[1] * 100, [1] * 99 + [-1]]
+        self.assertEqual(engine._select([0, 1], values, [2, 0])[0], 1)
+        self.assertEqual(engine._select([0, 1], values, [2, 0], complete=True)[0], 0)
+
+    def test_proofs_update_old_predictions_and_the_opponents_reply(self):
+        leaf = _LeafValue((1, 2), 1)
+        normal = _Prediction(leaf, 3)
+        defended = normal.with_reply(_Prediction(0, 2), .5)
+        other_seat = _Prediction(leaf, -3, -1)
+        self.assertEqual(defended.resolve(), (.5, 2.5))
+        leaf.value, leaf.exact = -1, True
+        self.assertEqual(normal.resolve(), (-1, 3))
+        self.assertEqual(defended.resolve(), (-1, 3))
+        self.assertEqual(other_seat.resolve(), (1, -3))
+        plan, outcomes = SmartRunnerEngine._worst_pickup_plan(
+            [_Prediction(0, 0).resolve()], {'known attack': [normal.resolve()]})
+        self.assertEqual((plan, outcomes), ('known attack', [(-1, 3)]))
+
+    def test_cache_reuses_proven_draw_even_without_budget_and_resets_for_new_game(self):
+        engine = SmartRunnerEngine()
+        engine.init('6S')
+        u = engine._universe
+        hands = [u.mask(['6C']), u.mask(['7C'])]
+        search = _LeafSearch(engine, hands[0] | hands[1])
+        leaf = search.register(hands, 0)
+        self.assertIs(leaf, search.register(hands[::-1], 1))
+        search.refine()
+        self.assertTrue(leaf.exact)
+        self.assertEqual(leaf.value, 0)
+        engine.leaf_budget = 0
+        reused = _LeafSearch(engine, hands[0] | hands[1])
+        with patch('durak.engine.smart_runner.rollout', side_effect=AssertionError('cached')):
+            hit = reused.register(hands, 0)
+            reused.refine()
+        self.assertEqual((hit.exact, hit.value, reused.nodes), (True, 0, 0))
+        self.assertEqual(reused.diagnostics()['leaf_cache_hits'], 1)
+        engine.init('6H')
+        self.assertEqual(engine._leaf_values, {})
+
+    def test_budget_is_strict_and_failed_searches_never_poison_exact_cache(self):
+        engine = SmartRunnerEngine(leaf_budget=7, leaf_nodes=4)
+        engine.init('6S')
+        u = engine._universe
+        hands = [u.mask(['6C', '8C', 'TC']), u.mask(['7C', '9C', 'JC'])]
+        search = _LeafSearch(engine, hands[0] | hands[1])
+        for attacker in (0, 1):
+            search.register(hands, attacker)
+        search.refine()
+        self.assertEqual(search.nodes, 7)
+        self.assertTrue(all(leaf.nodes <= 4 for leaf in search.states.values()))
+        self.assertEqual(search.diagnostics()['leaf_fallbacks'], 2)
+        self.assertEqual(engine._leaf_values, {})
+
+
 class EngineTest(unittest.TestCase):
+    def test_small_hidden_set_reuses_exact_leaves_in_low_luck_dummy_loss(self):
+        # Seed 202617093, action 34. Previously 128 sampled trials repeatedly
+        # solved the same leaves, spent >500k nodes and chose the trump jack.
+        hand = '7C 8D 8S TC JD JH JS QS KH'.split()
+        hidden = 'TH QD KC KD AC 6H 6C QH'.split()
+        live = set(map(DurakCard, hand + hidden + ['6S']))
+        data = {'enemy_count': 5, 'deck_count': 3,
+                'discarded': list(map(str, DurakCard.all() - live))}
+        engine = SmartRunnerEngine(explain_decisions=True)
+        engine.init('QH')
+        engine.deal(hand, data)
+        self.assertEqual(engine.respond(['6S'], data), '8S')
+        info = engine.last_decision
+        self.assertEqual((info['sampling'], info['hidden_worlds'], info['worlds']),
+                         ('enumerated', 42, 84))
+        self.assertTrue(all(c['worlds'] == 84 for c in info['candidates']))
+        self.assertLess(info['leaf_nodes_used'], engine.leaf_budget)
+        self.assertLess(info['leaf_unique_positions'], info['leaf_evaluations'])
+        self.assertGreater(info['leaf_exact_evaluations'], info['leaf_fallbacks'])
+
+    def test_eight_card_stock_uses_exact_leaves_before_a_long_attack_empties_it(self):
+        # Seed 202614065, before the four-card attack that emptied an eight-card
+        # stock. Revision 3 chose KH using exclusively greedy endgames.
+        hand = list(map(DurakCard, '7C 7D KD KH KS AD'.split()))
+        hidden = set(map(DurakCard, '8C 8S TS QC AH AS AC QH 6H 8H 9C TD 7S JC'.split()))
+        data = {'enemy_count': 6, 'deck_count': 8,
+                'discarded': list(map(str, DurakCard.all() - set(hand) - hidden))}
+        engine = SmartRunnerEngine(explain_decisions=True)
+        engine.init('JC')
+        engine.deal(hand, data)
+        self.assertEqual(str(engine.move([], data)), '7D')
+        self.assertGreater(engine.last_decision['exact_worlds'], 0)
+        self.assertGreater(engine.last_decision['leaf_nodes_used'], 0)
+
     def test_complete_games_against_dummy_and_nextgen(self):
         for seed in range(4):
             for opponent in (DummyEngine(), NextGenEngine()):

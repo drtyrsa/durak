@@ -79,11 +79,10 @@ def test_taking_and_playing_do_not_count_as_luck_and_refills_use_post_pickup_han
     opening = tracker.report()
     controller.register_give_more([])
     assert tracker.report() == opening
-    # The taker now holds 6C and draws first. Only the actual three stock cards
-    # are measured, not the picked-up 6C; the opponent's final batch (including
-    # the public ace) is deterministic.
+    # The taker now holds 6C and draws first. Measure the stock split jointly,
+    # after the pickup; the public ace always goes to the opponent.
     expected = LuckTracker(controller._player1.cards, controller._player2.cards, 'AS')
-    expected.observe_refill(1, cards('7C QD'), cards('AH KS 6C'), controller._deck, 3)
+    expected.observe_refills(cards('7C QD'), cards('AH KS 6C'), controller._deck, (1, 0), 0)
     controller.deal()
     assert tracker.report()['refills'] == pytest.approx(expected.report()['refills'])
     assert tracker.report()['cards_drawn'] == 6
@@ -107,7 +106,7 @@ def test_tracking_is_reproducible_and_does_not_change_randomness_or_outcome():
         reports.append(details['luck'])
     assert reports[0] == reports[1]
     assert reports[0]['cards_drawn'] == 24
-    with patch.object(LuckTracker, 'observe_refill'):
+    with patch.object(LuckTracker, 'observe_refills'):
         assert play_game(DummyEngine(), DummyEngine(), 7832) == winners[0] == winners[1]
     rng = DealRandom(5)
     with patch('durak.controller.random', rng):
@@ -123,3 +122,60 @@ def test_tracking_is_reproducible_and_does_not_change_randomness_or_outcome():
         controller.start_new_game()
         assert controller._luck is not old
         assert controller._luck.report()['refills'] == 0
+
+
+@pytest.mark.parametrize('attacker', [0, 1])
+@pytest.mark.parametrize('budget', [0, 1_000, 500_000])
+def test_joint_endgame_corrections_are_zero_mean_and_seat_symmetric(attacker, budget):
+    first, second = cards('6C 7D 8H TS AC'), cards('7C 8D 9H JS')
+    pool, bottom = cards('KD QH'), cards('6S')
+    corrections = []
+    for draw in pool:
+        stock = [draw] + [c for c in pool if c != draw] + bottom
+        with patch('durak.luck.ENDGAME_NODES', budget):
+            tracker = LuckTracker(first, second, '6S')
+            tracker.observe_refills(first, second, stock, (0, 1), attacker)
+            reverse = LuckTracker(second, first, '6S')
+            reverse.observe_refills(second, first, stock, (1, 0), 1 - attacker)
+        report = tracker.report()
+        corrections.append(report['refills'])
+        assert report['total'] == pytest.approx(-reverse.report()['total'])
+        assert report['refills'] == report['refill_components']['endgame']
+        assert report['cards_drawn'] == 3 and report['refill_count'] == 2
+        event = report['endgame_draws'][0]
+        assert event['allocations'] == 2
+        assert event['exact_allocations'] + event['fallback_allocations'] == 2
+        assert event['nodes'] <= budget
+        if not budget:
+            assert event['fallback_allocations'] == 2
+    assert mean(corrections) == pytest.approx(0, abs=1e-14)
+
+
+def test_final_eight_card_draw_recognizes_the_forced_loss_not_just_card_ranks():
+    # Seed 202614065: the old meter called Dummy unlucky although this final
+    # allocation leaves Smart Runner without answers to Dummy's spade attacks.
+    first, second = cards('7C 7D'), cards('8S TS')
+    stock = cards('AC QH 6H 8H 9C TD 7S JC')
+    tracker = LuckTracker(first, second, 'JC')
+    tracker.observe_refills(first, second, stock, (0, 1), 1)
+    report = tracker.report()
+    event = report['endgame_draws'][0]
+    assert event['allocations'] == event['exact_allocations'] == 35
+    assert event['actual_value'] == -0.5
+    assert event['correction'] < -0.25
+    assert report['refills'] == event['correction']
+    assert all(report['refill_components'][key] == 0 for key in WEIGHTS)
+    # Future stock order within either recipient's batch has no effect.
+    permuted = stock[:4][::-1] + stock[4:-1][::-1] + stock[-1:]
+    other = LuckTracker(first, second, 'JC')
+    other.observe_refills(first, second, permuted, (0, 1), 1)
+    assert other.report() == report
+
+
+def test_known_last_allocations_add_no_luck_and_do_not_search():
+    first, second = cards('7C 7D 8D 9D'), cards('8S TS QS KS AS')
+    tracker = LuckTracker(first, second, 'JC')
+    with patch('durak.luck.EndgameSolver', side_effect=AssertionError('deterministic draw')):
+        tracker.observe_refills(first, second, cards('AC QH JC'), (0, 1), 1)
+    assert tracker.report()['refills'] == 0
+    assert tracker.report()['cards_drawn'] == 3

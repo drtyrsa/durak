@@ -19,34 +19,43 @@ function loadApp() {
 }
 
 const app = loadApp();
-const present = (total) => app.luckPresentation({model: 'chance-v1', total});
+const present = (total, model = 'chance-v1') => app.luckPresentation({model, total});
 
+for (const model of ['chance-v1', 'chance-v2']) {
 test('reference is fixed, sorted and includes each player symmetrically', () => {
-  const reference = vm.runInContext('luckReference', app);
+  const reference = vm.runInContext(`luckReferences['${model}']`, app);
   assert.equal(reference.games, 200);
   assert.equal(reference.magnitudes.length, 200);
   assert.ok(Object.isFrozen(reference) && Object.isFrozen(reference.magnitudes));
   assert.ok(reference.magnitudes.every((v, i, a) => v >= 0 && (!i || v >= a[i - 1])));
-  assert.equal(present(0).percentile, 50);
+  assert.equal(present(0, model).percentile, 50);
   let previous = 0;
   for (let i = -100; i <= 100; i++) {
     const score = i / 100;
-    const p = present(score).percentile;
+    const p = present(score, model).percentile;
     assert.ok(p >= previous);
-    assert.ok(Math.abs(p + present(-score).percentile - 100) < 1e-12);
+    assert.ok(Math.abs(p + present(-score, model).percentile - 100) < 1e-12);
     previous = p;
   }
 });
 
 test('ties receive midpoint ranks', () => {
-  const reference = vm.runInContext('luckReference', app);
+  const reference = vm.runInContext(`luckReferences['${model}']`, app);
   const values = reference.magnitudes.flatMap(v => [-v, v]).sort((a, b) => a - b);
   for (const value of new Set(values)) {
     const first = values.indexOf(value);
     const after = values.lastIndexOf(value) + 1;
     const expected = 100 * ((first + after) / 2 + 0.5) / (values.length + 1);
-    assert.ok(Math.abs(present(value).percentile - expected) < 1e-12);
+    assert.ok(Math.abs(present(value, model).percentile - expected) < 1e-12);
   }
+});
+}
+
+test('the audited last draw is favourable to Dummy under the recalibrated model', () => {
+  const display = present(0.29687140584490673, 'chance-v2');
+  assert.ok(display.percentile > 90);
+  assert.match(display.verdict, /^Very lucky/);
+  assert.equal(display.reference, 'chance-v2-sr3-dummy-202614000-100');
 });
 
 test('the six-trump game is very lucky, around the 95th percentile', () => {
@@ -73,7 +82,8 @@ test('missing, nonfinite and uncalibrated models do not get a guessed percentile
     assert.equal(present(total), null);
   }
   assert.equal(app.luckPresentation(null), null);
-  assert.equal(app.luckPresentation({model: 'chance-v2', total: 0.2}), null);
+  assert.equal(app.luckPresentation({model: 'chance-v3', total: 0.2}), null);
+  assert.equal(app.luckPresentation({model: '__proto__', total: 0.2}), null);
 });
 
 test('actual renderer uses percentiles, preserves raw luck and hides it during play', () => {
@@ -106,6 +116,14 @@ test('actual renderer uses percentiles, preserves raw luck and hides it during p
   context.fixture.revision++;
   vm.runInContext('renderLuck()', context);
   assert.ok(panels['luck-result'].children.some(c => c.textContent === 'Won against the cards'));
+  context.fixture.luck = {...luck, model: 'chance-v2', total: 0.29687140584490673,
+    components: {...luck.components, endgame: 0.35714285714285715}};
+  context.fixture.revision++;
+  vm.runInContext('renderLuck()', context);
+  const details = panels['luck-result'].children.find(c => c.tag === 'details');
+  const rows = details.children.find(c => c.tag === 'dl');
+  assert.ok(rows.children.some(c => c.textContent === 'Endgame draws'));
+  assert.match(details.children.find(c => c.tag === 'p').textContent, /who attacks next/);
   context.fixture.game_over = false;
   vm.runInContext('renderLuck()', context);
   assert.ok(panels['luck-result'].hidden && panels['luck-sidebar'].hidden);

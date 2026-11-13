@@ -1,19 +1,25 @@
 """Chance-only card luck, independent of engine policy and random number generators.
 
 All values are signed for player 1, in game-score units. Each refill contributes
-actual hand value minus its exact expectation over the unordered hidden stock.
-The coefficients are fixed hypotheses, not calibrated winning probabilities.
+actual value minus its exact expectation over the unordered hidden stock.
+The last split uses bounded endgame evaluation; earlier draws use fixed hand
+features. The coefficients are hypotheses, not calibrated winning probabilities.
 See docs/luck.md for the estimator, assumptions and limitations.
 """
 from collections import Counter
+from itertools import combinations
 from math import comb, fsum
 
+from durak.engine.endgame import EndgameSolver, SearchLimitReached
+from durak.engine.simulator import MOVE, Universe, rollout
 from durak.utils.cards import DurakCard
 
 
-MODEL = 'chance-v1'
+MODEL = 'chance-v2'
 WEIGHTS = {'trumps': 0.06, 'ranks': 0.03, 'answers': 0.02,
            'pairs': 0.008, 'suits': 0.015}
+ENDGAME_NODES = 500_000
+ENDGAME_POSITION_NODES = 100_000
 
 
 def _answers(hand, attack):
@@ -85,9 +91,93 @@ class LuckTracker:
         # Given the face-up trump, initial hands have the same distribution.
         # Antisymmetry therefore gives an exact zero expected difference.
         self.opening = advantage(first, second, self.trump)
-        self.refills = dict.fromkeys(WEIGHTS, 0.0)
+        self.opening['endgame'] = 0.0
+        self.refills = dict.fromkeys(self.opening, 0.0)
         self.refill_count = 0
         self.cards_drawn = 0
+        self.endgame_draws = []
+
+    def observe_refills(self, first, second, stock, order, attacker):
+        """Measure a whole bout's draws, after pickups and the initiative change.
+
+        If these draws exhaust the stock, evaluate the resulting endgames jointly.
+        Every possible split of the hidden cards is evaluated in a fixed order;
+        the face-up bottom card stays with its predetermined recipient. The
+        actual allocation receives no special search budget or early evaluation.
+        """
+        if not stock:
+            return
+        hands = [set(first), set(second)]
+        counts = [0, 0]
+        remaining = len(stock)
+        for seat in order:
+            counts[seat] = min(remaining, max(0, 6 - len(hands[seat])))
+            remaining -= counts[seat]
+        if not remaining and all(counts):
+            # One player gets all face-down cards, the other only the visible
+            # trump: there is just one allocation, so no search is necessary.
+            if counts[order[0]] < len(stock) - 1:
+                self._endgame_refill(hands, stock, order, counts, attacker)
+            self.cards_drawn += len(stock)
+            self.refill_count += 2
+            return
+        # Earlier draws retain the inexpensive analytic card-value correction.
+        # Drawing the entire stock into one hand is deterministic and adds zero.
+        remaining_stock = list(stock)
+        for seat in order:
+            count = counts[seat]
+            self.observe_refill(seat, *hands, remaining_stock, count)
+            hands[seat].update(remaining_stock[:count])
+            remaining_stock = remaining_stock[count:]
+
+    def _endgame_refill(self, hands, stock, order, counts, attacker):
+        first, second = order
+        count = counts[first]
+        pool = sorted(stock[:-1])
+        actual_draw = frozenset(stock[:count])
+        stock_set = set(stock)
+        live = hands[0] | hands[1] | stock_set
+        trump = DurakCard('6', self.trump)
+        solver = EndgameSolver(live, trump, ENDGAME_POSITION_NODES, swindle_depth=0)
+        universe = None
+        values, actual = [], None
+        nodes = solved = 0
+        for draw in combinations(pool, count):
+            draw = frozenset(draw)
+            final = hands[:]
+            final[first] = hands[first] | draw
+            final[second] = hands[second] | (stock_set - draw)
+            value = None
+            if nodes < ENDGAME_NODES:
+                solver.max_nodes = min(ENDGAME_POSITION_NODES, ENDGAME_NODES - nodes)
+                try:
+                    result = solver.solve(final[attacker], final[1 - attacker])
+                    value = result.outcome * (1 if attacker == 0 else -1)
+                    solved += 1
+                except SearchLimitReached:
+                    pass
+                nodes += solver.nodes
+            if value is None:
+                # Fixed engine-independent fallback. Still evaluate EVERY split,
+                # so expectation and observation use the same value function.
+                if universe is None:
+                    universe = Universe(trump)
+                winner = rollout(universe, [universe.mask(h) for h in final], [],
+                                 attacker, 0, 0, MOVE)
+                value = (winner == 0) - (winner == 1)
+            value *= 0.5  # win/draw/loss -> centered game-score units
+            values.append(value)
+            if draw == actual_draw:
+                actual = value
+        assert actual is not None
+        expected = fsum(values) / len(values)
+        correction = actual - expected
+        self.refills['endgame'] += correction
+        self.endgame_draws.append({
+            'stock_count': len(stock), 'attacker': 'player%d' % (attacker + 1),
+            'allocations': len(values), 'exact_allocations': solved,
+            'fallback_allocations': len(values) - solved, 'nodes': nodes,
+            'actual_value': actual, 'expected_value': expected, 'correction': correction})
 
     def observe_refill(self, seat, first, second, stock, count):
         """Called before a real stock draw, after any table pickup.
@@ -113,11 +203,12 @@ class LuckTracker:
             self.refills[key] += sign * (actual[key] - expected[key])
 
     def report(self):
-        components = {key: self.opening[key] + self.refills[key] for key in WEIGHTS}
+        components = {key: self.opening[key] + self.refills[key] for key in self.opening}
         return {'model': MODEL, 'perspective': 'player1',
                 'total': fsum(components.values()),
                 'opening': fsum(self.opening.values()),
                 'refills': fsum(self.refills.values()),
                 'components': components, 'opening_components': self.opening.copy(),
                 'refill_components': self.refills.copy(),
-                'refill_count': self.refill_count, 'cards_drawn': self.cards_drawn}
+                'refill_count': self.refill_count, 'cards_drawn': self.cards_drawn,
+                'endgame_draws': [event.copy() for event in self.endgame_draws]}

@@ -9,17 +9,139 @@ same worlds and continuation policies. With an empty deck the game has
 perfect information and the exact EndgameSolver is tried within a node budget.
 """
 import argparse
-from math import sqrt
+from itertools import permutations
+from math import comb, factorial, sqrt
 from random import Random
 from time import perf_counter
 from zlib import crc32
 
 from durak.engine.dummy import DummyEngine
 from durak.engine.endgame import EndgameSolver, SearchLimitReached
-from durak.engine.simulator import DRAW, GIVE, MOVE, RESPOND, STOPPED, Universe, pickup, rollout
+from durak.engine.simulator import GIVE, MOVE, RESPOND, STOPPED, Universe, pickup, rollout
 from durak.utils.cards import DurakCard
 
 ALL_CARDS = frozenset(DurakCard.all())
+LEAF_VALUE_CACHE_SIZE = 8192
+
+
+class _LeafValue:
+    """One empty-deck position, shared by every rollout reaching it."""
+    def __init__(self, key, value, exact=False):
+        self.key, self.value, self.exact = key, value, exact
+        self.uses = 0
+        self.nodes = 0
+        self.attempted = False
+
+
+class _Prediction:
+    """A rollout whose score follows later exact refinements of its leaf."""
+    def __init__(self, value, resistance, sign=1, alternative=None, weight=1):
+        self.value, self.resistance, self.sign = value, resistance, sign
+        self.alternative, self.weight = alternative, weight
+
+    def resolve(self):
+        score = self.value.value if isinstance(self.value, _LeafValue) else self.value
+        ordinary = (self.sign * score, self.resistance)
+        if self.alternative is None:
+            return ordinary
+        worse = min(ordinary, self.alternative.resolve())
+        return tuple((1 - self.weight) * a + self.weight * b
+                     for a, b in zip(ordinary, worse))
+
+    def with_reply(self, alternative, weight=1):
+        return _Prediction(self.value, self.resistance, self.sign, alternative, weight)
+
+
+class _LeafSearch:
+    """Share proven values and distribute one decision's budget over unique leaves.
+
+    Cheap scores are placeholders, never stored in the engine's exact cache.
+    Predictions reference mutable leaf values so a later proof also corrects
+    earlier uses of the same position, including after the budget is exhausted.
+    """
+    def __init__(self, engine, live):
+        self.engine, self.live = engine, live
+        self.states = {}
+        self.requests = self.nodes = self.searches = self.solved = self.limits = 0
+        self.cache_hits = 0
+
+    def register(self, hands, attacker):
+        key = (hands[attacker], hands[1 - attacker])
+        self.requests += 1
+        if key not in self.states:
+            known = self.engine._leaf_values.get(key)
+            if known is None:
+                winner = rollout(self.engine._universe, list(key), [], 0, 0, 0, MOVE)
+                value = (winner == 0) - (winner == 1)
+            else:
+                value = known
+                self.cache_hits += 1
+            self.states[key] = _LeafValue(key, value, exact=known is not None)
+        result = self.states[key]
+        result.uses += 1
+        return result
+
+    def _remember(self, leaf, value):
+        leaf.value, leaf.exact = value, True
+        cache = self.engine._leaf_values
+        if leaf.key not in cache and len(cache) >= LEAF_VALUE_CACHE_SIZE:
+            del cache[next(iter(cache))]
+        cache[leaf.key] = value
+
+    def refine(self):
+        engine = self.engine
+        unknown = [leaf for leaf in self.states.values() if not leaf.exact]
+        if not unknown or not engine.leaf_budget:
+            return
+        solver = EndgameSolver(engine._universe.unpack(self.live), engine._trump_card,
+                               engine.leaf_nodes, swindle_depth=0,
+                               cache_size=max(engine.leaf_nodes, engine.leaf_budget))
+        hands = {leaf.key: tuple(engine._universe.unpack(h) for h in leaf.key)
+                 for leaf in unknown}
+        # First give every distinct position a share, then deepen unresolved
+        # ones. Completed subtrees survive between searches in this decision;
+        # proven leaf values also survive subsequent engine decisions.
+        first_share = max(1, min(engine.leaf_nodes, engine.leaf_budget // len(unknown)))
+        for allowance in (first_share, engine.leaf_nodes):
+            for leaf in unknown:
+                if leaf.exact:
+                    continue
+                value = solver.cached_outcome(*hands[leaf.key])
+                if value is not None:
+                    self.cache_hits += 1
+                    self._remember(leaf, value)
+                    continue
+                budget = min(allowance - leaf.nodes, engine.leaf_budget - self.nodes)
+                if budget <= 0:
+                    continue
+                solver.max_nodes = budget
+                leaf.attempted = True
+                self.searches += 1
+                try:
+                    value = solver.solve(*hands[leaf.key]).outcome
+                except SearchLimitReached:
+                    self.limits += 1
+                else:
+                    self.solved += 1
+                    self._remember(leaf, value)
+                self.nodes += solver.nodes
+                leaf.nodes += solver.nodes
+        # Another search may have proved an earlier, interrupted root. Lookups
+        # remain available when there is no node budget left.
+        for leaf in unknown:
+            if not leaf.exact:
+                value = solver.cached_outcome(*hands[leaf.key])
+                if value is not None:
+                    self.cache_hits += 1
+                    self._remember(leaf, value)
+
+    def diagnostics(self):
+        exact = sum(leaf.uses for leaf in self.states.values() if leaf.exact)
+        return dict(leaf_nodes_used=self.nodes, leaf_evaluations=self.requests,
+                    leaf_unique_positions=len(self.states), leaf_searches=self.searches,
+                    leaf_solved=self.solved, leaf_search_limits=self.limits,
+                    leaf_cache_hits=self.cache_hits, leaf_exact_evaluations=exact,
+                    leaf_fallbacks=self.requests - exact)
 
 
 class SmartRunnerEngine(DummyEngine):
@@ -33,17 +155,18 @@ class SmartRunnerEngine(DummyEngine):
       come in batches of ``batch``; after ``min_worlds``, a candidate is dropped
       once it trails the leader on the shared worlds by ``z`` standard errors.
     - ``leaf_deck``: with at most this many cards in the deck, rollouts stop
-      when the sampled deck runs out and the exact solver scores the
-      position (``leaf_worlds`` worlds, ``leaf_nodes`` per leaf, ``leaf_budget``
-      per decision). 0 disables exact leaves.
+      when the sampled deck runs out. Shared exact searches refine their
+      values (``leaf_worlds`` trials, ``leaf_nodes`` per unique leaf,
+      ``leaf_budget`` total nodes per decision). Small hidden sets are fully
+      enumerated when both continuation styles fit. 0 disables exact leaves.
     - ``max_nodes``: exact search budget when the deck is empty. By default
       ``max_cards`` permits the entire deck, so even a large position gets a
       chance to be solved. Budget exhaustion falls back to a rollout.
     """
 
     def __init__(self, worlds=2048, max_cards=36, max_nodes=500_000, swindle_depth=3,
-                 seed=0, explain_decisions=False, leaf_deck=4, leaf_worlds=128,
-                 leaf_nodes=5_000, leaf_budget=150_000,
+                 seed=0, explain_decisions=False, leaf_deck=12, leaf_worlds=128,
+                 leaf_nodes=20_000, leaf_budget=500_000,
                  race=True, min_worlds=128, batch=64, z=3.0):
         if worlds < 1 or min_worlds < 2 or batch < 1 or leaf_worlds < 1:
             raise ValueError('worlds, leaf_worlds and batch must be positive; min_worlds >= 2')
@@ -51,6 +174,8 @@ class SmartRunnerEngine(DummyEngine):
             raise ValueError('max_cards must be between 2 and 36')
         if max_nodes is not None and max_nodes < 1:
             raise ValueError('max_nodes must be positive or None')
+        if leaf_deck < 0 or leaf_nodes < 1 or leaf_budget < 0:
+            raise ValueError('leaf_deck and leaf_budget must be non-negative; leaf_nodes positive')
         self.worlds = worlds
         self.max_cards = max_cards
         self.max_nodes = max_nodes
@@ -76,6 +201,7 @@ class SmartRunnerEngine(DummyEngine):
         self._enemy = set()  # cards the opponent is known to hold
         self._seen = set()  # last observed table plus our later plays
         self._solver = None
+        self._leaf_values = {}  # exact attacker-relative values in Universe masks
         self.last_decision = None
         return result
 
@@ -157,7 +283,7 @@ class SmartRunnerEngine(DummyEngine):
                                       on_table=list(map(str, table)), gamedata=gamedata,
                                       known_enemy=list(map(str, sorted(self._enemy))),
                                       chosen=list(map(str, cards)),
-                                      settings={'policy_revision': 3, 'seed': self.seed,
+                                      settings={'policy_revision': 5, 'seed': self.seed,
                                                 'worlds': self.worlds, 'race': self.race,
                                                 'min_worlds': self.min_worlds, 'batch': self.batch,
                                                 'z': self.z, 'max_cards': self.max_cards,
@@ -204,15 +330,6 @@ class SmartRunnerEngine(DummyEngine):
                     continue
             keep.append(index)
         return keep
-
-    def _leaf(self, solver, hands, attacker, careful=0):
-        """Exact result of a sampled world once its deck is empty."""
-        u = self._universe
-        try:
-            outcome = solver.solve(u.unpack(hands[attacker]), u.unpack(hands[1 - attacker])).outcome
-        except SearchLimitReached:  # too big to solve quickly: finish the rollout
-            return rollout(u, hands, [], attacker, 0, 0, MOVE, careful=careful)
-        return DRAW if outcome == 0 else attacker if outcome == 1 else 1 - attacker
 
     def _candidates(self, phase, mine, table, pending, enemy_count):
         """Legal actions as simulator masks, cheapest first; 0 = stop/take/none."""
@@ -322,7 +439,7 @@ class SmartRunnerEngine(DummyEngine):
         return min([(None, continuations), *plans.items()], key=lambda p: (
             sum(r[0] for r in p[1]), sum(r[1] for r in p[1])))
 
-    def _select(self, active, results, costs, resistance=None):
+    def _select(self, active, results, costs, resistance=None, complete=False):
         """Break uncertain, small score differences toward conserving cards.
 
         Use paired samples, as in racing, and cap the allowed difference at
@@ -342,10 +459,40 @@ class SmartRunnerEngine(DummyEngine):
             n = len(diffs)
             gap = sum(diffs) / n
             se = sqrt(sum((d - gap) ** 2 for d in diffs) / (n * (n - 1))) if n > 1 else 0
-            if gap <= min(0.03, se):
+            if gap <= (0 if complete else min(0.03, se)):
                 close.append(i)
         chosen = min(close, key=lambda i: (costs[i], -means[i], i))
         return chosen, leader, means
+
+    @staticmethod
+    def _worlds(pool, slots, known, bottom, limit, rng, enumerate_small):
+        """Uniform hidden arrangements; hand permutations are not new worlds.
+
+        Enumerate when both continuation styles fit the trial budget. For an
+        enumerated greedy continuation, average its normal result and the
+        optional pickup check equally: the check then retains its overall 1/4
+        weight without assigning it to an arbitrary subset of hidden worlds.
+        """
+        possible = comb(len(pool), slots) * factorial(len(pool) - slots)
+        complete = enumerate_small and 2 * possible <= limit
+
+        def generate():
+            if complete:
+                orders = list(permutations(pool, len(pool) - slots))
+                rng.shuffle(orders)
+                all_unknown = sum(pool)
+                for order in orders:
+                    enemy = known | (all_unknown ^ sum(order))
+                    deck = ([bottom] if bottom else []) + list(order)
+                    yield enemy, deck, 3, 0
+                    yield enemy, deck, 0, 0.5
+            else:
+                for index in range(limit):
+                    rng.shuffle(pool)
+                    enemy = known | sum(pool[:slots])
+                    deck = ([bottom] if bottom else []) + pool[slots:]
+                    yield enemy, deck, 3 if index % 2 == 0 else 0, 1 if index % 4 == 3 else 0
+        return generate(), (2 * possible if complete else limit), possible, complete
 
     def _monte_carlo(self, phase, table, gamedata, hidden, info):
         u = self._universe
@@ -365,75 +512,82 @@ class SmartRunnerEngine(DummyEngine):
         attacker = 1 if phase == 'respond' else 0
         mode = {'move': MOVE, 'respond': RESPOND, 'give_more': GIVE}[phase]
         worlds = self.worlds if deck_count else 1  # an empty deck hides nothing
+        # A single defended bout can draw up to twelve cards. In particular an
+        # eight-card stock may disappear after four attacks, without ever
+        # presenting a decision at the old four-card exact-leaf threshold.
         exact_leaves = 0 < deck_count <= self.leaf_deck
         if exact_leaves:
             worlds = min(worlds, self.leaf_worlds)
-        results = [[] for _ in candidates]  # per-world outcome, shared worlds
-        continuation_totals = [0] * len(candidates)
-        resistance_totals = [0.0] * len(candidates)
+        schedule, worlds, possible, complete = self._worlds(
+            pool, slots, known, bottom, worlds, rng, exact_leaves)
+        predictions = [[] for _ in candidates]
+        continuations = [[] for _ in candidates]
         assess_resistance = deck_count <= 6
         active = list(range(len(candidates)))
         costs = [self._conservation_cost(phase, c, mine, table_mask) for c in candidates]
-        budget, exact_worlds = self.leaf_budget, 0
+        leaf_search = (_LeafSearch(self, mine | known | table_mask | sum(pool) | bottom)
+                       if exact_leaves else None)
+        world_leaves = []
         reply_checks = 0
         pickup_checks = pickup_threats = 0
         pickup_plans = {}
         take_continuations = []
-        pickup_plan = None
         done = 0
-        batch = self.batch if self.race else worlds
+        # Late predictions must be compared after shared proofs have updated
+        # every occurrence. Racing on provisional greedy values can discard
+        # the best move before its exact leaves are solved.
+        racing = self.race and not exact_leaves
+        batch = self.batch if racing else worlds
+
+        def resolved():
+            rows = [[p.resolve() for p in row] for row in predictions]
+            plan = None
+            if pickup_plans:
+                # Choose one reply plan across worlds, without foreknowledge
+                # of the particular hidden deck order.
+                plan, worst = self._worst_pickup_plan(
+                    [p.resolve() for p in take_continuations],
+                    {key: [p.resolve() for p in values]
+                     for key, values in pickup_plans.items()})
+                rows[candidates.index(0)] = worst
+            return rows, plan
+
         while done < worlds and len(active) > 1:
             for _ in range(min(batch, worlds - done)):
+                enemy, deck, careful, reply_weight = next(schedule)
                 done += 1
-                rng.shuffle(pool)
-                hand = pool[:slots]
-                enemy = known | sum(hand)
-                deck = ([bottom] if bottom else []) + pool[slots:]
-                # Shared continuation styles prevent every sampled player
-                # from spending its last good trump just because it can beat.
-                careful = 3 if done % 2 else 0
-                # Exact leaves per whole world, so all candidates are judged alike.
-                solver = None
-                if exact_leaves and budget > 0:
-                    live = u.unpack(mine | enemy | table_mask | sum(deck))
-                    solver = EndgameSolver(live, self._trump_card, self.leaf_nodes,
-                                           swindle_depth=0)
-                    exact_worlds += 1
+                used_leaves = []
+                world_leaves.append(used_leaves)
+
                 def evaluate(hands, attack_seat, on_table, uncovered, stage, action,
                              draw_pile=None):
-                    nonlocal budget
                     pile = deck if draw_pile is None else draw_pile
                     winner = rollout(u, hands, pile[:], attack_seat, on_table, uncovered, stage,
-                                     action, stop_at_empty=solver is not None or assess_resistance,
+                                     action, stop_at_empty=leaf_search is not None or assess_resistance,
                                      careful=careful)
                     next_attacker = winner - STOPPED if winner >= STOPPED else attack_seat
                     fight = self._resistance(hands, next_attacker) if assess_resistance else 0
                     if winner >= STOPPED:
-                        if solver is not None:
-                            winner = self._leaf(solver, hands, next_attacker, careful)
-                            budget -= solver.nodes
-                        else:
-                            winner = rollout(u, hands, [], next_attacker, 0, 0, MOVE,
-                                             careful=careful)
-                    return (winner == 0) - (winner == 1), fight
+                        if leaf_search is not None:
+                            leaf = leaf_search.register(hands, next_attacker)
+                            used_leaves.append(leaf)
+                            return _Prediction(leaf, fight, 1 if next_attacker == 0 else -1)
+                        winner = rollout(u, hands, [], next_attacker, 0, 0, MOVE,
+                                         careful=careful)
+                    return _Prediction((winner == 0) - (winner == 1), fight)
 
                 for index in active:
                     candidate = candidates[index]
                     result = evaluate([mine, enemy], attacker, table_mask, pending, mode, candidate)
-                    continuation_totals[index] += result[0]
-                    if mode == MOVE and candidate and deck and done % 4 == 0:
+                    continuations[index].append(result)
+                    if mode == MOVE and candidate and deck and reply_weight:
                         choices = enemy & u.beaters[candidate.bit_length() - 1]
                         cheapest = choices & -choices
                         if cheapest & u.trumps:
-                            # In a quarter of worlds the opponent checks both
-                            # a costly defence and a voluntary pickup instead
-                            # of cooperating with our attempt to draw a trump.
                             reply_table = table_mask | candidate
-                            # These worlds use the greedy continuation above;
-                            # explicitly compare its defence with taking.
                             alternative = evaluate([mine ^ candidate, enemy], 0, reply_table,
                                                    candidate, RESPOND, 0)
-                            result = min(result, alternative)
+                            result = result.with_reply(alternative, reply_weight)
                             reply_checks += 1
                     if mode == RESPOND and not candidate and deck and known:
                         take_continuations.append(result)
@@ -453,24 +607,26 @@ class SmartRunnerEngine(DummyEngine):
                                     pickup_plans[plan] = take_continuations[:]
                                 pickup_plans[plan][-1] = evaluated[key]
                                 pickup_threats |= threat
-                    score, fight = result
-                    results[index].append(score)
-                    resistance_totals[index] += fight
-            if pickup_plans:
-                # The opponent chooses one plan on average, not a different
-                # best reply using foreknowledge of every sampled deck order.
-                pickup_plan, worst = self._worst_pickup_plan(take_continuations, pickup_plans)
-                take_index = candidates.index(0)
-                results[take_index] = [r[0] for r in worst]
-                resistance_totals[take_index] = sum(r[1] for r in worst)
-            if self.race and done >= self.min_worlds:
-                active = self._race(active, results)
-        resistance = [total / len(r) if r else 0
-                      for total, r in zip(resistance_totals, results)] if assess_resistance else None
-        best, leader, mean = self._select(active, results, costs, resistance)
+                    predictions[index].append(result)
+            if racing and done >= self.min_worlds:
+                rows, _ = resolved()
+                active = self._race(active, [[r[0] for r in row] for row in rows])
+        if leaf_search is not None:
+            leaf_search.refine()
+            info.update(leaf_search.diagnostics())
+        else:
+            info['leaf_nodes_used'] = 0
+        rows, pickup_plan = resolved()
+        results = [[r[0] for r in row] for row in rows]
+        resistance = ([sum(r[1] for r in row) / len(row) for row in rows]
+                      if assess_resistance else None)
+        best, leader, mean = self._select(active, results, costs, resistance, complete=complete)
         selection = ('resistance' if assess_resistance and mean[leader] == -1
                      else 'conservation' if best != leader else 'score')
+        exact_worlds = sum(any(leaf.exact or leaf.attempted for leaf in leaves)
+                           for leaves in world_leaves)
         info.update(strategy='monte_carlo', worlds=done, exact_worlds=exact_worlds,
+                    sampling='enumerated' if complete else 'sampled', hidden_worlds=possible,
                     reply_checks=reply_checks, pickup_checks=pickup_checks,
                     pickup_threats=list(map(str, u.unpack(pickup_threats))), selection=selection,
                     pickup_plan=({'throw_in': pickup_plan[0],
@@ -478,7 +634,7 @@ class SmartRunnerEngine(DummyEngine):
                                  if pickup_plan is not None else None),
                     score_leader=list(map(str, u.unpack(candidates[leader]))), candidates=[
             {'cards': list(map(str, u.unpack(c))), 'score': mean[i], 'worlds': len(results[i]),
-             'continuation_score': continuation_totals[i] / len(results[i]),
+             'continuation_score': sum(p.resolve()[0] for p in continuations[i]) / len(results[i]),
              'resistance': resistance[i] if resistance is not None else None,
              'conservation_cost': costs[i]}
             for i, c in enumerate(candidates)])
@@ -491,9 +647,9 @@ def main():
                         help='maximum sampled worlds per middlegame decision (default: 2048)')
     parser.add_argument('--no-race', action='store_true',
                         help='always evaluate every candidate on all worlds')
-    parser.add_argument('--leaf-deck', type=int, default=4,
+    parser.add_argument('--leaf-deck', type=int, default=12,
                         help='score rollouts exactly once the deck has at most this many '
-                             'cards (default: 4; 0: off)')
+                             'cards (default: 12; 0: off)')
     parser.add_argument('--max-cards', type=int, default=36,
                         help='maximum live cards for the exact endgame (default: 36; '
                              'search is limited by --max-nodes)')

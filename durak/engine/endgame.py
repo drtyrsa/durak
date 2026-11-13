@@ -33,7 +33,8 @@ class EndgameSolver:
     not matter. Only the uncovered attack must be recorded separately.
     ``max_nodes=None`` allows an unlimited exact search. With a budget, only
     fully solved positions are cached, including when a search is interrupted,
-    and the table holds at most ``max_nodes`` entries.
+    and the table holds at most ``max_nodes`` entries unless ``cache_size``
+    supplies a separate memory limit for reuse across bounded searches.
 
     Exact play is indifferent between moves with the same value. When the
     player to act cannot force a win, ties are broken toward the move whose
@@ -42,7 +43,7 @@ class EndgameSolver:
     ``swindle_depth=0`` disables this and keeps the generation-order choice.
     """
 
-    def __init__(self, cards, trump, max_nodes=None, swindle_depth=3):
+    def __init__(self, cards, trump, max_nodes=None, swindle_depth=3, cache_size=None):
         self.trump = DurakCard(trump)
         self.cards = tuple(sorted(set(map(DurakCard, cards)), key=lambda c: (
             c.suit == self.trump.suit, c.numeric_rank, c.suit
@@ -64,7 +65,10 @@ class EndgameSolver:
             raise ValueError('max_nodes must be positive or None')
         if swindle_depth < 0:
             raise ValueError('swindle_depth must be non-negative')
+        if cache_size is not None and cache_size < 1:
+            raise ValueError('cache_size must be positive or None')
         self.max_nodes = max_nodes
+        self.cache_size = cache_size
         self.swindle_depth = swindle_depth
         self.table = {}
         self.nodes = 0
@@ -114,6 +118,18 @@ class EndgameSolver:
         return Solution(persp * value, cards, self.nodes,
                         None if expected is None else float(expected))
 
+    def cached_outcome(self, attacker, defender):
+        """Known attacker-relative value at an empty table; no search or mutation.
+
+        None means unknown, including searches previously stopped by a budget.
+        A proven draw is 0. Terminal positions need no search either.
+        """
+        a, d = self._mask(attacker), self._mask(defender)
+        if a & d:
+            raise ValueError('Hands must be disjoint')
+        cached = self.table.get((a, d, 0, 0))
+        return cached[0] if cached is not None else self._terminal(a, d, 0)
+
     def _evict(self, capacity):
         """Make room in a full table by dropping entries from earlier calls.
 
@@ -121,8 +137,9 @@ class EndgameSolver:
         subtrees and exhaust its budget on positions a fresh solver handles.
         Earlier entries using a card outside the root's live set are
         unreachable and go first; if that is not enough, all earlier entries
-        go. This call adds fewer entries than its node budget, so afterwards
-        it can always cache everything it solves, just like a fresh solver.
+        go. With the default capacity, this leaves room for everything the
+        current call can solve. An explicitly smaller cache also drops older
+        entries from this call as necessary.
         """
         items = list(self.table.items())
         live = self._root_live
@@ -131,6 +148,10 @@ class EndgameSolver:
         new = items[self._call_start:]
         if len(old) + len(new) >= capacity:
             old = []
+        if len(new) >= capacity:
+            # An explicitly small cache may fill within a single search.
+            # Dropping completed entries only affects speed, never exactness.
+            new = new[-(capacity // 2):] if capacity > 1 else []
         self.table = dict(old + new)
         self._call_start = len(old)
 
@@ -222,8 +243,9 @@ class EndgameSolver:
             result = (best, action)
 
         # Bound memory as well as work per call. Entries are always exact.
-        if self.max_nodes is not None and len(self.table) >= self.max_nodes:
-            self._evict(self.max_nodes)
+        capacity = self.max_nodes if self.cache_size is None else self.cache_size
+        if capacity is not None and len(self.table) >= capacity:
+            self._evict(capacity)
         self.table[key] = result
         return result
 
