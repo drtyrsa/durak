@@ -283,7 +283,7 @@ class SmartRunnerEngine(DummyEngine):
                                       on_table=list(map(str, table)), gamedata=gamedata,
                                       known_enemy=list(map(str, sorted(self._enemy))),
                                       chosen=list(map(str, cards)),
-                                      settings={'policy_revision': 5, 'seed': self.seed,
+                                      settings={'policy_revision': 6, 'seed': self.seed,
                                                 'worlds': self.worlds, 'race': self.race,
                                                 'min_worlds': self.min_worlds, 'batch': self.batch,
                                                 'z': self.z, 'max_cards': self.max_cards,
@@ -405,6 +405,47 @@ class SmartRunnerEngine(DummyEngine):
                 if hands[1] & threat:
                     yield (scheme, threat), hands[:], remaining
 
+    def _reserve_pickup(self, phase, mine, table, pending, known, pool, slots, deck_count):
+        """A bounded preference for a useful pickup over the last trump.
+
+        Only public information is used: ``pool`` is the set of unseen cards,
+        excluding the exposed bottom trump, not a sampled opponent hand.
+        Gaining plain-suit answers can make the next defence possible without
+        immediately spending the trump we saved. Keep the hand small enough
+        to regain access to refills, allowing for matching-rank throw-ins.
+        This is a middlegame prior, not an exact value or a legal-action filter.
+        """
+        u = self._universe
+        trumps = mine & u.trumps
+        size = (mine | table).bit_count()
+        if (phase != 'respond' or not 6 <= deck_count <= 12 or size > 8 or table.bit_count() > 3
+                or trumps.bit_count() != 1 or pending & u.trumps
+                or mine & u.beaters[pending.bit_length() - 1] != trumps):
+            return None
+        matching = u.ranks(table)
+        # E[min(limit, eligible)] <= min(limit, E[eligible]). Known cards
+        # contribute in full; unknown cards have the same hand-inclusion rate.
+        allowance = min(mine.bit_count() - 1,
+                        (known & matching).bit_count()
+                        + slots * (pool & matching).bit_count() / max(1, pool.bit_count()))
+        if size + allowance > 9:
+            return None
+        plain = mine & u.plain
+        gained = 0
+        for attack in self._bits((known | pool) & u.plain):
+            beaters = u.beaters[attack.bit_length() - 1] & u.plain
+            if not plain & beaters and table & beaters:
+                gained |= attack
+        if not gained:
+            return None
+        return {'trump': str(u.unpack(trumps)[0]),
+                'new_plain_covers': list(map(str, u.unpack(gained))),
+                'hand_after_take': size, 'throw_in_allowance': allowance,
+                # At most 10 percentage points of game score. One newly
+                # covered live card gets half the allowance. These are fixed
+                # heuristic limits, not inferred winning probabilities.
+                'score_gap_limit': 0.1 * min(2, gained.bit_count())}
+
     def _resistance(self, hands, attacker):
         """A secondary endgame measure, not a probability or an exact result.
 
@@ -506,6 +547,8 @@ class SmartRunnerEngine(DummyEngine):
         known = u.mask(self._enemy)
         bottom = u.bit[self._trump_card] if deck_count else 0
         pool = sorted(u.bit[card] for card in unknown if u.bit[card] != bottom)
+        reserve = self._reserve_pickup(phase, mine, table_mask, pending, known,
+                                       sum(pool), slots, deck_count)
         key = '|'.join(map(str, (self.seed, phase, sorted(self._cards), table,
                                  sorted(unknown), sorted(self._enemy))))
         rng = Random(crc32(key.encode()))
@@ -536,7 +579,10 @@ class SmartRunnerEngine(DummyEngine):
         # Late predictions must be compared after shared proofs have updated
         # every occurrence. Racing on provisional greedy values can discard
         # the best move before its exact leaves are solved.
-        racing = self.race and not exact_leaves
+        # A reserve decision has just two legal actions. Compare them on the
+        # full shared sample rather than eliminate the pickup before its
+        # bounded strategic preference can be considered.
+        racing = self.race and not exact_leaves and reserve is None
         batch = self.batch if racing else worlds
 
         def resolved():
@@ -623,6 +669,14 @@ class SmartRunnerEngine(DummyEngine):
         best, leader, mean = self._select(active, results, costs, resistance, complete=complete)
         selection = ('resistance' if assess_resistance and mean[leader] == -1
                      else 'conservation' if best != leader else 'score')
+        if reserve is not None:
+            take = candidates.index(0)
+            gap = mean[best] - mean[take]
+            used = (best != take and mean[leader] < 1
+                    and gap <= reserve['score_gap_limit'])
+            info['reserve_pickup'] = dict(reserve, score_gap=gap, used=used)
+            if used:
+                best, selection = take, 'reserve'
         exact_worlds = sum(any(leaf.exact or leaf.attempted for leaf in leaves)
                            for leaves in world_leaves)
         info.update(strategy='monte_carlo', worlds=done, exact_worlds=exact_worlds,

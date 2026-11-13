@@ -89,6 +89,22 @@ Browser, terminal, and protocol play all use this same policy.
    `resistance` score replaces the ordinary conservation tie-break only in
    that all-losing case. It is a heuristic, not a winning probability, and
    cannot override a better win/draw/loss estimate or an exact decision.
+8. **Last-trump reserve.** With 6–12 cards left, consider taking a non-trump
+   attack when the only beating card is our last trump. This applies only if
+   the pickup adds ordinary-suit answers to live unseen or remembered cards
+   that our current non-trumps cannot beat. The table must contain at most
+   three cards, the resulting hand at most eight, and the hand plus a
+   conservative expected throw-in allowance at most nine. Known eligible
+   throw-ins count in full; unseen ones use their chance of being in the
+   opponent's hand. It does not assume that the opponent lacks beating cards.
+   Both actions receive the full shared sample. Taking may override a score
+   gap of 0.1 for one new answer, or 0.2 for two or more, in win-minus-loss
+   units (5 or 10 percentage points of game score). These are fixed heuristic
+   limits, not measured winning probabilities. A candidate scoring a win in
+   every trial is protected, as are all decisions made by the exact solver.
+   Earlier pickups risk blocking useful refills; with fewer than six cards
+   left, accepting extra cards can be especially costly. This preference
+   therefore applies only in the specified stock window.
 
 Sampling is seeded from the position. Replaying the full game reproduces
 decisions; an isolated decision can differ if it lacks exact proofs cached
@@ -102,8 +118,8 @@ an exhausted node budget falls back to rollout evaluation. An explicit lower
 `max_cards` remains available as a resource limit. Exact win/draw/loss choices
 are never overridden by the middlegame conservation rule.
 
-The shared game log records `settings`, including `policy_revision: 5`, plus
-`selection` (`score`, `conservation` or `resistance`), `score_leader`, each candidate's score,
+The shared game log records `settings`, including `policy_revision: 6`, plus
+`selection` (`score`, `conservation`, `resistance` or `reserve`), `score_leader`, each candidate's score,
 sample count and conservation cost, and the number of immediate `reply_checks`.
 `pickup_checks`, `pickup_threats` and `pickup_plan` identify the tested known
 follow-up attacks and the opponent plan used to evaluate taking.
@@ -124,7 +140,50 @@ cache hits. `leaf_exact_evaluations` and `leaf_fallbacks` report how many leaf
 uses ultimately have proven or approximate values. Search settings remain
 resource controls; there is one default playing policy.
 
+When the last-trump rule is eligible, `reserve_pickup` records the trump,
+`new_plain_covers`, `hand_after_take`, `throw_in_allowance`, `score_gap`,
+`score_gap_limit` and whether the preference was `used`. Candidate scores
+remain the unmodified simulation estimates, so the log exposes the tradeoff.
+
 ## Results
+
+Revision 6 adds the last-trump reserve preference without increasing search
+budgets. In the audited seed **202620078**, action 20 previously used the last
+trump, K♥, against K♣ with twelve cards in stock. Taking collects 7♦, K♦ and
+K♣, preserves K♥, and supplies ordinary answers to the still-live 9♦ and Q♦.
+The hand grows to eight; the throw-in allowance is 0.8 cards. The raw
+simulation still prefers defending (−0.21875 versus −0.40625), but the 0.1875
+gap falls within the rule's 0.2 limit. The log explicitly records this override.
+A full replay now wins against Dummy from both seats; action 20 is the first
+changed move in the original losing seat. This is a regression example, not
+independent strength evidence or a proof that taking is optimal.
+
+An initial prototype also protected the last trump earlier in the game.
+Pilots exposed losses after pickups with 20 and 24 cards still in stock:
+saving a trump can delay useful refills. The final 6–12-card window and
+throw-in allowance were fixed before the validation matches. The engine
+still has one playing policy, and neither rollout outcomes nor exact-solver
+values are relabeled as proven by this heuristic.
+
+Validation against Dummy reused the recorded revision 5 baseline on
+**202618000–202618099**, playing revision 6 from both seats on all 100 deals.
+Both versions finished with **162 wins, 32 losses and 6 draws** (82.50% raw
+score). Only two games changed moves, and both remained wins. The chance-v2
+adjusted scores were 81.31% for revision 5 and 81.28% for revision 6. This
+establishes no overall strength gain: the new preference fixes the audited
+decision and rarely intervenes elsewhere in this sample.
+
+Fresh direct play against revision 5 used **202622000–202622029**, both seats:
+**29 wins, 29 losses and two draws**. The reserve preference did not override
+any decision in these games, so the tie provides little evidence about its
+strength. The observed zero spread between paired scores is not proof of
+equivalence on other deals.
+
+Across the 200 Dummy games and 60 direct games, all **7617** revision 6
+decisions respected the existing leaf-search budget. Frozen engine sources,
+complete game logs, per-deal comparisons and the audit summary are saved in
+`logs/benchmarks/smart-runner-v6-development-20261113/`. The shared simulator
+and empty-deck solver are unchanged.
 
 Revision 5 keeps revision 4's search budgets and continuation policies while
 sharing exact proofs and enumerating small hidden sets. In the audited

@@ -316,6 +316,83 @@ class SharedLeafTest(unittest.TestCase):
         self.assertEqual(engine._leaf_values, {})
 
 
+class ReservePickupTest(unittest.TestCase):
+    def setUp(self):
+        self.engine = SmartRunnerEngine(worlds=16, leaf_worlds=16, explain_decisions=True)
+        self.engine.init('TH')
+        self.u = self.engine._universe
+        self.hand = '9C TS JS QC KH'.split()
+        self.table = '7D KD KC'.split()
+        self.unseen = '6H 8H QD AC 9S QH 8C AD 7S 7C 9D AS 7H AH JC'.split()
+
+    def context(self, hand=None, table=None, known=(), unseen=None, slots=4, deck=12):
+        table = self.table if table is None else table
+        return self.engine._reserve_pickup(
+            'respond', self.u.mask(self.hand if hand is None else hand), self.u.mask(table),
+            self.u.mask(table[-1:]), self.u.mask(known),
+            self.u.mask(self.unseen if unseen is None else unseen), slots, deck)
+
+    def data(self):
+        live = set(map(DurakCard, self.hand + self.table + self.unseen + ['TH']))
+        return {'deck_count': 12, 'enemy_count': 4,
+                'discarded': list(map(str, DurakCard.all() - live))}
+
+    def test_useful_pickup_restores_plain_answers_and_counts_possible_throw_ins(self):
+        result = self.context()
+        self.assertEqual(result['trump'], 'KH')
+        self.assertEqual(result['new_plain_covers'], ['9D', 'QD'])
+        self.assertEqual(result['hand_after_take'], 8)
+        self.assertAlmostEqual(result['throw_in_allowance'], .8)
+        self.assertEqual(result['score_gap_limit'], .2)
+        # Removing one newly answerable card from the live set reduces the
+        # strategic allowance; removing both makes this pickup unhelpful.
+        unseen = [c for c in self.unseen if c != '9D']
+        self.assertEqual(self.context(unseen=unseen, deck=11)['score_gap_limit'], .1)
+        self.assertIsNone(self.context(unseen=[c for c in unseen if c != 'QD'], deck=10))
+
+    def test_no_preference_with_other_defences_or_an_unmanageable_pickup(self):
+        for changes in (
+                {'hand': '9C TS JS AC KH'.split()},  # plain answer to KC
+                {'hand': '9C JH JS QC KH'.split()},  # another trump remains
+                {'hand': self.hand + ['8S']},       # already too many cards
+                {'hand': '9C TS JS QC AH'.split(), 'table': '7D KD KH'.split()},
+                {'deck': 5}, {'deck': 0}, {'deck': 24},
+                {'slots': 10, 'deck': 6},           # many possible throw-ins
+                {'known': ['7C', '7S'], 'slots': 2,
+                 'unseen': [c for c in self.unseen if c not in ('7C', '7S')]}):
+            with self.subTest(changes=changes):
+                self.assertIsNone(self.context(**changes))
+
+    def test_prior_is_bounded_and_never_overrides_a_simulated_win(self):
+        # Each candidate receives 16 trials; return controlled terminal
+        # outcomes so we test selection without any hidden search assumptions.
+        for trump_wins, pickup_wins, expected in ((8, 7, ''), (8, 4, 'KH'), (16, 15, 'KH')):
+            with self.subTest(trump_wins=trump_wins, pickup_wins=pickup_wins):
+                engine = SmartRunnerEngine(worlds=16, leaf_worlds=16, explain_decisions=True)
+                engine.init('TH'); engine.deal(self.hand, self.data())
+                counts = {0: 0, self.u.mask(['KH']): 0}
+
+                def controlled(u, hands, deck, attacker, table, pending, mode, forced=None, **kw):
+                    counts[forced] += 1
+                    wins = trump_wins if forced else pickup_wins
+                    return 0 if counts[forced] <= wins else 1
+
+                with patch('durak.engine.smart_runner.rollout', side_effect=controlled):
+                    self.assertEqual(engine.respond(self.table, self.data()), expected)
+                self.assertEqual(set(counts.values()), {16})
+                self.assertEqual(engine.last_decision['reserve_pickup']['used'], expected == '')
+
+    def test_audited_last_trump_is_saved_with_default_search_limits(self):
+        engine = SmartRunnerEngine(explain_decisions=True)
+        engine.init('TH'); engine.deal(self.hand, self.data())
+        self.assertEqual(engine.respond(self.table, self.data()), '')
+        info = engine.last_decision
+        self.assertEqual(info['selection'], 'reserve')
+        self.assertEqual(info['score_leader'], ['KH'])
+        self.assertLessEqual(info['leaf_nodes_used'], engine.leaf_budget)
+        self.assertEqual(info['reserve_pickup']['new_plain_covers'], ['9D', 'QD'])
+
+
 class EngineTest(unittest.TestCase):
     def test_small_hidden_set_reuses_exact_leaves_in_low_luck_dummy_loss(self):
         # Seed 202617093, action 34. Previously 128 sampled trials repeatedly
