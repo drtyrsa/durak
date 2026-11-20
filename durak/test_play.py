@@ -1,4 +1,4 @@
-"""Terminal play tests: no display server or wxPython required."""
+"""Tests for terminal play and engine selection."""
 import unittest
 import io
 import os

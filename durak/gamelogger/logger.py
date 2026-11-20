@@ -56,7 +56,7 @@ class GameLogger(object):
         move['given_more'] = list(map(str, given_more))
 
     def log_action(self, player, phase, cards, hand, on_table, gamedata, analysis=None):
-        """Optional per-action data; the existing wx replay fields stay intact."""
+        """Record optional decision data alongside the round history."""
         action = {'player': player, 'phase': phase, 'cards': list(map(str, cards)),
                   'hand': list(map(str, sorted(hand))), 'on_table': list(map(str, on_table)),
                   'gamedata': gamedata, 'at': datetime.now().isoformat()}

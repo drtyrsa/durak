@@ -2,7 +2,7 @@
 
 NextGen combines a deterministic, public-information middlegame policy with
 an exact win/draw/loss endgame solver. Everything below runs on Python 3.10+
-without wxPython or a display server. The middlegame is a heuristic, not an
+without a display server. The middlegame is a heuristic, not an
 optimal solution of the hidden-information game.
 
 ## Run and test
@@ -15,7 +15,7 @@ durak-play --engine dummy
 durak-play --engine durak-dummy     # any engine executable on PATH
 durak-play --engine /path/to/engine # any pyDurak-protocol engine
 durak-autoplay durak-nextgen durak-dummy --matches-number=1 --match-size=100
-python3 -m pytest --ignore=durak/gui
+python3 -m pytest
 python3 -m durak.engine.benchmark --samples 200 --hand-size 6
 python3 -m durak.engine.matchup --pairs 1000 --seed 10000 --opponent previous
 python3 -m durak.engine.matchup --pairs 500 --seed 10000 --opponent dummy
@@ -35,9 +35,8 @@ use an executable launcher script; the path is not interpreted as a shell
 command. Built-in engines continue to work directly from the source tree.
 
 The engine speaks the same six-command protocol as DummyEngine. Its stdout
-contains only protocol responses, and EOF exits cleanly. GUI support is an
-optional install: `pip install -e '.[gui]'`. Existing GUI users can add
-`durak-nextgen` through the engine-selection dialog.
+contains only protocol responses, and EOF exits cleanly. To play in the
+browser, run `durak-web --engine nextgen`.
 
 ## Analytic exchange policy
 
@@ -152,8 +151,8 @@ Timings depend on the machine and concurrent load.
 The existing `--opponent previous` benchmark name still means **Dummy middlegame
 plus the exact solver**, not the frozen old smart policy in the table above.
 `durak-nextgen --middlegame dummy` retains that original baseline. The default
-`smart` option now selects the analytic exchange policy; terminal, web, autoplay
-and GUI clients receive it through the unchanged protocol.
+`smart` option selects the analytic exchange policy for terminal play, web
+play and autoplay.
 
 Tests independently check defensive matching against exhaustive assignments,
 refill marginals against every hidden allocation in small controller positions,
@@ -167,8 +166,8 @@ and preserving useful suit cover.
 Logging belongs to `GameController` / `GameLogger`, and works with every engine.
 Web play saves games automatically to `logs/`; terminal play can use
 `durak-play --log-dir logs` with any opponent. Autoplay retains its existing
-`--log-file=matches.log` option. These are the same replay files the wx viewer
-opens, extended with per-action position data and optional engine analysis.
+`--log-file=matches.log` option. Open these files using **Replay** in
+`durak-web` to inspect the recorded positions and any engine analysis.
 
 ```sh
 python3 -m durak.gamelogger logs/your-game.log

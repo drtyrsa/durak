@@ -25,7 +25,7 @@ setup(
     author_email='drtyrsa@yandex.ru',
     license='MIT',
     packages=find_packages(),
-    package_data={'durak': ['assets/*.gif'], 'durak.web': ['static/*']},
+    package_data={'durak.web': ['static/*']},
     entry_points={
         'console_scripts': [
             'durak-autoplay=durak.autoplay:main',
@@ -35,14 +35,11 @@ setup(
             'durak-play=durak.play:main',
             'durak-smart-runner=durak.engine.smart_runner:main',
             'durak-web=durak.web.server:main',
-            'durak-gui=durak.gui.play_app:main',
-            'durak-logviewer=durak.gui.view_log_app:main',
         ],
     },
     install_requires=[
         'docopt',
     ],
-    extras_require={'gui': ['wxPython']},
     tests_require=['pytest'],
     zip_safe=False
 )

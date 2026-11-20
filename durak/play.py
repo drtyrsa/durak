@@ -1,4 +1,4 @@
-"""Play Durak against a configurable engine in a terminal, without wxPython."""
+"""Play Durak against a configurable engine in a terminal."""
 import argparse
 import os.path
 

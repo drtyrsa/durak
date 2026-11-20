@@ -1,4 +1,4 @@
-"""Exercise the browser's actual game flow and local HTTP API without wx."""
+"""Exercise the browser game flow and local HTTP API."""
 import http.client
 import json
 from pathlib import Path
@@ -53,7 +53,7 @@ class BrowserGameTest(unittest.TestCase):
         self.assertEqual(state['game_number'], 1)
         self.assertEqual(state['scores'], {'you': 0, 'opponent': 0, 'draw': 0})
 
-    def test_cards_and_controls_follow_wx_turn_states(self):
+    def test_attack_defence_and_round_transition(self):
         browser = position(['6C', '8S'], ['7C', '8D'])
         state = browser.snapshot()
         self.assertCountEqual(state['legal_cards'], ['6C', '8S'])

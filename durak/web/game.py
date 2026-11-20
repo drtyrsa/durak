@@ -1,4 +1,4 @@
-"""Browser-independent play flow, following gui/frames/play.py."""
+"""Drive the browser game using the shared controller and engines."""
 from pathlib import Path
 
 from durak.controller import GameController

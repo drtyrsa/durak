@@ -1,4 +1,4 @@
-"""Inspect the same game logs used by the wx viewer, without starting a GUI."""
+"""Inspect saved games and engine decisions from the command line."""
 import argparse
 import json
 
