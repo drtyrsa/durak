@@ -15,6 +15,11 @@ from durak.web.game import BrowserGame, StalePosition
 
 STATIC = Path(__file__).with_name('static')
 ASSETS = {'/': ('index.html', 'text/html; charset=utf-8'),
+          '/replay': ('replay.html', 'text/html; charset=utf-8'),
+          '/replay.css': ('replay.css', 'text/css; charset=utf-8'),
+          '/replay.js': ('replay.js', 'text/javascript; charset=utf-8'),
+          '/replay-log.js': ('replay-log.js', 'text/javascript; charset=utf-8'),
+          '/cards.js': ('cards.js', 'text/javascript; charset=utf-8'),
           '/style.css': ('style.css', 'text/css; charset=utf-8'),
           '/app.js': ('app.js', 'text/javascript; charset=utf-8'),
           '/favicon.svg': ('favicon.svg', 'image/svg+xml')}
@@ -74,6 +79,18 @@ class Handler(BaseHTTPRequestHandler):
         elif path == '/api/state':
             with self.server.lock:
                 self._send(200, self._state())
+        elif path.startswith('/api/replay/'):
+            with self.server.lock:
+                game = self.server.game
+                if not game.replay_file or path != '/api/replay/' + game.replay_file:
+                    self._send(404, {'error': 'Open the saved log to replay this game.'})
+                    return
+                try:
+                    contents = Path(game.log_filename).read_bytes()
+                except OSError:
+                    self._send(404, {'error': 'The saved log is unavailable.'})
+                    return
+            self._send(200, contents, 'text/plain; charset=utf-8')
         else:
             self._send(404, {'error': 'Not found.'})
 
@@ -129,7 +146,7 @@ class Handler(BaseHTTPRequestHandler):
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--port', type=int, default=8765, help='local port (default: 8765; 0: choose a free port)')
-    parser.add_argument('--engine', default='nextgen', help='nextgen, smart_runner, dummy, or an engine executable name/path')
+    parser.add_argument('--engine', help='starting opponent (overrides the browser’s saved choice)')
     parser.add_argument('--no-browser', action='store_true', help='print the URL without opening a browser')
     parser.add_argument('--log-dir', default='logs', help='game/decision log directory (default: logs)')
     parser.add_argument('--no-log', action='store_true', help='disable game and decision logging')
@@ -137,11 +154,13 @@ def main(argv=None):
     if not 0 <= args.port <= 65535:
         parser.error('port must be between 0 and 65535')
     try:
-        server = DurakServer(args.port, args.engine, log_dir=None if args.no_log else args.log_dir)
+        server = DurakServer(args.port, args.engine or 'nextgen', log_dir=None if args.no_log else args.log_dir)
     except OSError as error:
         parser.exit(1, 'Cannot start durak-web: {}\n'.format(error))
     try:
-        server.game.start()
+        # Otherwise the first browser supplies its saved opponent before the first deal.
+        if args.engine is not None:
+            server.game.start()
         url = 'http://127.0.0.1:{}/'.format(server.server_port)
         print('Durak is at {}\nPress Ctrl+C to close the table.'.format(url), flush=True)
         if not args.no_browser:

@@ -46,7 +46,9 @@ paths cannot be supplied by HTTP requests.
   The previous winner goes first. The first game and games following a draw
   use the normal first-player rule.
 - Change **Opponent** in the sidebar to start a new game against another
-  engine. This selection is kept for subsequent games.
+  engine. Your browser remembers that choice for the next time you launch
+  `durak-web` on the same address and port. An explicit `--engine` takes
+  precedence for that launch.
 - **Rules** opens the rules. The game-end dialog offers a
   rematch or lets you review the final table.
 - **Luck balance** appears after the game, in the result dialog and sidebar.
@@ -67,6 +69,21 @@ and recent moves last for the current server process. Restarting the server
 resets them. This is a local human-versus-engine game, not network multiplayer.
 
 ## Saved games and analysis
+
+Choose **Replay** at the table, then open or drop a saved log. **Replay this
+game** in the result dialog opens the game you just finished when its log
+was saved. **Table** returns to play.
+
+Both hands are visible. Select a move, drag the position slider, or use the
+arrow keys to step through the game. Home and End jump to either end. **Play**
+advances automatically. The board shows the position after the selected
+action. Round starts show the newly dealt hands. Selecting an engine decision
+shows its recorded explanation and candidate scores when available.
+
+For a log containing several games, use **Game in file** to switch. Older
+logs support card-by-card replay from their round records. Interrupted games
+end at the last recorded position. Files opened or dropped are read locally
+by the browser.
 
 `durak-web` automatically saves each game under `./logs/` and prints the file
 path in the terminal. This uses the existing **GameLogger format**, readable
@@ -92,8 +109,8 @@ python3 -m durak.gamelogger logs/your-game.log --luck
 ```
 
 The first command lists all actions; the second prints the full recorded
-position and any engine explanation. Logs contain both hands for later review;
-they are not served by the web API or included in the browser's game state.
+position and any engine explanation. The live game state hides the opponent’s
+cards. Once the game ends, the replay link serves that game's saved log.
 
 ## Implementation
 

@@ -1,15 +1,7 @@
 'use strict';
 
 const $ = (id) => document.getElementById(id);
-const suits = {C: {symbol: '♣', name: 'Clubs', singular: 'clubs'}, D: {symbol: '♦', name: 'Diamonds', singular: 'diamonds'}, H: {symbol: '♥', name: 'Hearts', singular: 'hearts'}, S: {symbol: '♠', name: 'Spades', singular: 'spades'}};
-const ranks = {T: '10', J: 'Jack', Q: 'Queen', K: 'King', A: 'Ace'};
-const pipPositions = {
-  6: [[1,1],[1,3],[3,1],[3,3],[5,1],[5,3]],
-  7: [[1,1],[1,3],[2,2],[3,1],[3,3],[5,1],[5,3]],
-  8: [[1,1],[1,3],[2,2],[3,1],[3,3],[4,2],[5,1],[5,3]],
-  9: [[1,1],[1,3],[2,1],[2,3],[3,2],[4,1],[4,3],[5,1],[5,3]],
-  T: [[1,1],[1,3],[2,1],[2,2],[2,3],[4,1],[4,2],[4,3],[5,1],[5,3]],
-};
+const opponentKey = 'durak.opponent';
 let state = null;
 let busy = false;
 let automaticTimer = null;
@@ -18,45 +10,6 @@ let selected = new Set();
 let previousTable = new Set();
 let resultShown = null;
 let connected = true;
-
-function cardName(code) {
-  return `${ranks[code[0]] || code[0]} of ${suits[code[1]].singular}`;
-}
-
-function makeCard(code, interactive = false) {
-  if (!/^[6789TJQKA][CDHS]$/.test(code)) throw new Error('Invalid card received.');
-  const rank = code[0];
-  const suit = suits[code[1]].symbol;
-  const label = rank === 'T' ? '10' : rank;
-  const card = document.createElement(interactive ? 'button' : 'div');
-  card.className = 'playing-card' + ('DH'.includes(code[1]) ? ' red' : '');
-  card.dataset.card = code;
-  card.setAttribute('aria-label', cardName(code));
-  if (!interactive) card.setAttribute('role', 'img');
-  const corner = `<span class="rank">${label}</span><span class="suit">${suit}</span>`;
-  let face;
-  if (pipPositions[rank]) {
-    face = '<span class="pips">' + pipPositions[rank].map(([row,col]) => `<span class="pip ${row > 3 ? 'reverse' : ''}" style="grid-row:${row};grid-column:${col}">${suit}</span>`).join('') + '</span>';
-  } else if (rank === 'A') {
-    face = `<span class="large-suit">${suit}</span>`;
-  } else {
-    face = `<span class="court"><span class="court-letter">${rank}</span><span class="court-suit">${suit}</span></span>`;
-  }
-  card.innerHTML = `<span class="corner">${corner}</span>${face}<span class="corner bottom">${corner}</span>`;
-  if (state?.trump?.[1] === code[1]) {
-    card.insertAdjacentHTML('beforeend', '<span class="trump-diamond" aria-hidden="true">◆</span>');
-    card.setAttribute('aria-label', cardName(code) + ', trump');
-  }
-  return card;
-}
-
-function cardBack() {
-  const card = document.createElement('div');
-  card.className = 'card-back';
-  card.setAttribute('aria-hidden', 'true');
-  card.innerHTML = '<span class="back-emblem"><span>♠</span></span>';
-  return card;
-}
 
 function toast(message) {
   $('toast').textContent = message;
@@ -120,7 +73,7 @@ function renderHand() {
   const legal = new Set(state.legal_cards);
   for (const code of [...selected]) if (!legal.has(code)) selected.delete(code);
   state.hand.forEach((code, index) => {
-    const card = makeCard(code, true);
+    const card = makeCard(code, state.trump, true);
     const offset = index - (state.hand.length - 1) / 2;
     card.style.setProperty('--angle', (state.hand.length <= 10 ? offset * 1.35 : 0) + 'deg');
     card.style.setProperty('--lift', (state.hand.length <= 10 ? Math.abs(offset) * .9 : 0) + 'px');
@@ -147,29 +100,8 @@ function renderHand() {
 }
 
 function renderTable() {
-  const table = $('table-cards');
-  table.replaceChildren();
-  const addCard = (pair, code, classes = '') => {
-    const card = makeCard(code);
-    if (classes) card.classList.add(...classes.split(' '));
-    if (!previousTable.has(code)) card.classList.add('card-enter');
-    pair.append(card);
-  };
-  for (let i = 0; i < state.on_table.length; i += 2) {
-    const pair = document.createElement('div');
-    pair.className = 'table-pair';
-    addCard(pair, state.on_table[i], state.on_table[i+1] ? '' : 'uncovered');
-    if (state.on_table[i+1]) addCard(pair, state.on_table[i+1], 'defence');
-    table.append(pair);
-  }
-  for (const code of state.given_more) {
-    const pair = document.createElement('div');
-    pair.className = 'table-pair';
-    addCard(pair, code, 'throw-in');
-    table.append(pair);
-  }
+  drawTable($('table-cards'), state.on_table, state.given_more, state.trump, previousTable);
   previousTable = new Set([...state.on_table, ...state.given_more]);
-  table.hidden = previousTable.size === 0;
 
   const opponentHand = $('opponent-hand');
   opponentHand.replaceChildren();
@@ -184,23 +116,7 @@ function renderTable() {
   $('opponent-count').textContent = `${state.opponent_count} card${state.opponent_count === 1 ? '' : 's'} in hand`;
   opponentHand.setAttribute('aria-label', `Opponent has ${state.opponent_count} hidden cards`);
 
-  const deck = $('deck-cards');
-  deck.replaceChildren();
-  if (state.deck_count > 0) {
-    deck.append(makeCard(state.trump));
-    const backs = Math.min(state.deck_count - 1, 4);
-    for (let layer = backs - 1; layer >= 0; layer--) {
-      const back = cardBack();
-      back.style.setProperty('--stack-offset', `${layer * 2}px`);
-      deck.append(back);
-    }
-  } else {
-    const empty = document.createElement('div');
-    empty.className = 'empty-deck';
-    empty.textContent = suits[state.trump[1]].symbol;
-    deck.append(empty);
-  }
-  $('deck-label').textContent = state.deck_count ? `${state.deck_count} in the deck` : 'Deck is empty';
+  drawDeck($('deck-cards'), $('deck-label'), state.deck_count, state.trump);
 }
 
 function renderTurn() {
@@ -495,6 +411,10 @@ function render() {
   renderTable();
   renderTurn();
   renderLuck();
+  const replay = $('result-replay');
+  replay.hidden = !state.replay_file;
+  $('table-replay').href = state.replay_file ? '/replay?game=' + encodeURIComponent(state.replay_file) : '/replay';
+  replay.href = $('table-replay').href;
   if (state.game_over && resultShown !== state.revision) {
     resultShown = state.revision;
     $('result-title').textContent = {you: 'You win', opponent: `${engine.name} wins`, draw: 'Draw'}[state.winner];
@@ -506,7 +426,10 @@ async function startNewGame(engineId) {
   if (!state || busy || !connected) return;
   clearTimeout(automaticTimer);
   document.querySelectorAll('dialog[open]').forEach((dialog) => dialog.close());
-  await mutate('/api/new', engineId === undefined ? {} : {engine: engineId});
+  const started = await mutate('/api/new', engineId === undefined ? {} : {engine: engineId});
+  if (started && engineId !== undefined) {
+    try { localStorage.setItem(opponentKey, engineId); } catch { /* Storage is optional. */ }
+  }
 }
 
 document.querySelectorAll('.new-trigger').forEach((button) => button.addEventListener('click', () => startNewGame()));
@@ -525,7 +448,13 @@ $('engine-select').addEventListener('change', () => {
 (async () => {
   try {
     state = await request('/api/state');
-    if (!state.started) state = await request('/api/new', {});
+    if (!state.started) {
+      let saved;
+      try { saved = localStorage.getItem(opponentKey); } catch { /* Use the server default. */ }
+      const available = state.engines.some(engine => engine.id === saved);
+      await mutate('/api/new', available ? {engine: saved} : {});
+      return;
+    }
     render();
     scheduleAutomatic();
   } catch (error) {

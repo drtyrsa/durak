@@ -34,8 +34,9 @@ def position(human, opponent, table=(), phase='moving', enemy_attacks=False):
 
 class BrowserGameTest(unittest.TestCase):
     @unittest.skipUnless(shutil.which('node'), 'Node.js is optional; needed only for JavaScript tests')
-    def test_luck_display_javascript(self):
-        result = subprocess.run(['node', '--test', str(Path(__file__).with_name('test_luck_display.cjs'))],
+    def test_browser_javascript(self):
+        tests = sorted(Path(__file__).parent.glob('test_*.cjs'))
+        result = subprocess.run(['node', '--test', *map(str, tests)],
                                 capture_output=True, text=True, timeout=10)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
@@ -266,6 +267,35 @@ class WebHTTPTest(unittest.TestCase):
         self.assertEqual(self.call('/api/new', {'engine': '/bin/anything', 'revision': self.server.game.revision})[0], 400)
         self.assertEqual(self.call('/api/action', {'cards': '6C', 'revision': self.server.game.revision})[0], 400)
         self.assertEqual(self.call('/api/new', [1, 2])[0], 400)
+
+    def test_replay_link_only_serves_the_completed_game(self):
+        with tempfile.TemporaryDirectory() as directory:
+            game = self.server.game
+            game.log_dir = directory
+            state = game.start()
+            path = '/api/replay/' + Path(game.log_filename).name
+            self.assertNotIn('replay_file', state)
+            self.assertEqual(self.call(path)[0], 404)
+            for _ in range(1500):
+                if state['game_over']:
+                    break
+                if not state['human_turn']:
+                    state = game.step(state['revision'])
+                elif state['phase'] == 'giving_more':
+                    state = game.action('throw', [], state['revision'])
+                elif state['legal_cards']:
+                    state = game.action('play', state['legal_cards'][:1], state['revision'])
+                else:
+                    state = game.action(state['actions'][0], [], state['revision'])
+            self.assertTrue(state['game_over'])
+            self.assertEqual('/api/replay/' + state['replay_file'], path)
+            status, body = self.call(path)
+            self.assertEqual(status, 200)
+            self.assertEqual(body, Path(game.log_filename).read_bytes())
+            self.assertEqual(self.call('/api/replay/other.log')[0], 404)
+            game.log_dir = None
+            game.start()
+            self.assertEqual(self.call(path)[0], 404)
 
     def test_cross_origin_and_missing_tokens_rejected(self):
         self.assertEqual(self.call('/api/state', headers={'Host': 'untrusted.example'})[0], 403)

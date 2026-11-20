@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f5f2ea">
+  <title>Replay · Durak</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/style.css">
+  <link rel="stylesheet" href="/replay.css">
+  <script src="/cards.js" defer></script>
+  <script src="/replay-log.js" defer></script>
+  <script src="/replay.js" defer></script>
+</head>
+<body>
+  <main class="app replay-app">
+    <nav class="replay-nav" aria-label="Replay controls">
+      <a class="button quiet replay-link" href="/">← Table</a>
+      <h1>Replay</h1><span id="file-name"></span>
+      <button id="change-file" class="button quiet" hidden>Open log</button>
+      <input id="log-file" type="file" hidden>
+    </nav>
+    <p id="file-error" role="alert" hidden></p>
+    <section id="open-panel" aria-label="Open a saved game">
+      <div class="open-fan" aria-hidden="true"><i></i><i></i><i></i></div>
+      <button id="open-file" class="button primary">Open game log</button>
+      <p>or drop a .log file here</p>
+    </section>
+    <div id="replay-content" class="replay-layout" hidden>
+      <section class="game-room replay-room" aria-label="Recorded table">
+        <div class="seat-label"><strong id="name-2"></strong><span id="count-2"></span></div>
+        <div class="replay-hand-scroll"><div id="hand-2" class="replay-hand"></div></div>
+        <div class="felt-wrap"><div class="felt"><div class="felt-border"></div>
+          <div id="table-cards" class="table-cards" aria-label="Cards on the table"></div>
+          <div class="deck-area"><div id="deck-cards"></div><span id="deck-label"></span></div>
+        </div></div>
+        <div class="replay-hand-scroll"><div id="hand-1" class="replay-hand"></div></div>
+        <div class="seat-label"><strong id="name-1"></strong><span id="count-1"></span></div>
+        <div class="transport">
+          <div class="step-caption" aria-live="polite" aria-atomic="true"><span id="round-number"></span><strong id="step-label"></strong></div>
+          <div class="scrubber"><input id="scrub" type="range" min="0" step="1" aria-label="Replay position"><output id="step-count" for="scrub"></output></div>
+          <div class="transport-buttons">
+            <button id="first" title="First position (Home)" aria-label="First position">|‹</button>
+            <button id="prev" title="Previous position (←)" aria-label="Previous position">‹</button>
+            <button id="play" class="button primary" title="Play or pause (Space)">Play</button>
+            <button id="next" title="Next position (→)" aria-label="Next position">›</button>
+            <button id="last" title="Last position (End)" aria-label="Last position">›|</button>
+          </div>
+        </div>
+      </section>
+      <aside class="replay-notes">
+        <label id="game-picker" hidden>Game in file<select id="game-select"></select></label>
+        <section id="moves-section" aria-labelledby="moves-title">
+          <div class="notes-heading"><h2 id="moves-title">Moves</h2><span id="game-outcome"></span></div>
+          <div id="timeline" aria-label="Recorded moves"></div>
+        </section>
+        <section id="decision" aria-labelledby="decision-title" hidden>
+          <h2 id="decision-title">Engine decision</h2>
+          <p id="decision-summary"></p>
+          <table id="candidates" hidden><thead><tr><th scope="col">Move</th><th scope="col">Score</th></tr></thead><tbody></tbody></table>
+          <details id="details"><summary>Recorded details</summary><pre id="details-text"></pre></details>
+        </section>
+      </aside>
+    </div>
+    <noscript>Enable JavaScript to open a replay.</noscript>
+  </main>
+</body>
+</html>

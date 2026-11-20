@@ -205,6 +205,13 @@ class BrowserGame:
         self.revision += 1
         self.close(reason='engine_error')
 
+    @property
+    def replay_file(self):
+        if (self.started and self.controller.is_game_over() and self.log_filename
+                and self.controller.log_error is None):
+            return Path(self.log_filename).name
+        return None
+
     def snapshot(self):
         base = {'revision': self.revision, 'started': self.started, 'engine': self.engine_id,
                 'game_number': self.game_number,
@@ -238,4 +245,5 @@ class BrowserGame:
                     history=self.history[:], taking=self.taking)
         if controller.is_game_over():
             base['luck'] = controller.luck_report()
+            base['replay_file'] = self.replay_file
         return base

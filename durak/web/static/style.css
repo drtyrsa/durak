@@ -290,3 +290,6 @@ dialog h2{font-size:22px}
 @media(max-width:560px){.room-topline{font-size:10px;letter-spacing:0}.game-controls .button{min-height:40px;padding:8px 10px}.hand-caption>span:first-child{font-size:9px;letter-spacing:0}}
 
 .opponent-info select{margin-top:8px;min-height:40px;padding:10px 11px;font-size:14px;background:transparent}
+
+.replay-link{text-decoration:none}
+#result-replay{margin-top:8px}
